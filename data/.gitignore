@@ -44,3 +44,6 @@ evaluation/cat/.gradle
 evaluation/cat/cat.jar
 
 extendj-bench.jar
+**/.classpath
+**/.project
+**/.settings
