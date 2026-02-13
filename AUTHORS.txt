@@ -1,4 +1,10 @@
-Authors:
+The recent changes to this repo were performed by the below people:
+- Mattias Mc Mullin, Sweden
+- Christoffer.F.Rinaldo, Sweden
+
+The original benchmarking suite that this repo was built upon was authored by the below people
+
+Original Authors:
 - Idriss Riouak (idriss.riouak@cs.lth.se), Lund University, Sweden
 - Niklas Fors (niklas.fors@cs.lth.se), Lund University, Sweden
 - Jesper Öqvist (jesper.oqvist@cognibotics.com), Cognibotics AB, Sweden
