@@ -1,0 +1,30 @@
+{
+  "benchmarks": [
+    {
+      "name": "commons-cli",
+      "url": "https://github.com/apache/commons-cli.git",
+      "checkout": "git",
+      "description": "Apache Commons CLI is a collection of command line utilities that are designed to make common tasks easier.",
+      "commit": "e81a871",
+      "classpath": "dependencies/FOP/fop-all.jar:dependencies/NETBEANS_XML/org-netbeans-modules-editor-lib.jar:dependencies/JFREECHART/junit-4.11.jar",
+      "dir_to_analyze": "src/",
+      "LOC": 6235,
+      "enable": true,
+      "methods": 585
+    },
+    {
+      "name": "commons-jxpath",
+      "url": "https://github.com/apache/commons-jxpath.git",
+      "checkout": "git",
+      "description": "Apache Commons JXPath - A JXPath implementation for Java",
+      "commit": "4cfa8da",
+      "classpath": "dependencies/COMMONS-JXPATH/junit-3.8.1.jar:dependencies/COMMONS-JXPATH/commons-beanutils-1.7.0.jar:dependencies/COMMONS-JXPATH/commons-logging-1.1.1.jar:dependencies/COMMONS-JXPATH/mockejb-0.6-beta2.jar:dependencies/COMMONS-JXPATH/servlet-api-2.4.jar:dependencies/COMMONS-JXPATH/cglib-full-2.0.2.jar:dependencies/COMMONS-JXPATH/xml-apis-1.3.04.jar:dependencies/COMMONS-JXPATH/jdom-1.0.jar:dependencies/COMMONS-JXPATH/jsp-api-2.0.jar:dependencies/COMMONS-JXPATH/xercesImpl-2.4.0.jar:dependencies/COMMONS-JXPATH/mockrunner-jdk1.3-j2ee1.3-0.4.jar",
+      "dir_to_analyze": "src/",
+      "LOC": 24320,
+      "enable": true,
+      "methods": 2030,
+      "entryPackage": "org.apache.commons.jxpath.ri.JXPathContextReferenceImpl",
+      "entryMethod": "compileExpression"
+    }
+  ]
+}

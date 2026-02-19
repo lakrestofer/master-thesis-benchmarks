@@ -1,5 +1,8 @@
 #!/bin/zsh
 
+# set -e # exit if any step has a nonzero exit code
+# set -o pipefail # including in the middle of a pipe
+
 ############################################################
 ## constants
 ############################################################
@@ -32,7 +35,8 @@ function usage() {
   echo "  -o, --outer    Number of outer iterations (default: 10)"
   echo "  -i, --inner    Number of inner iterations (default: 10)"
   echo "  -m, --heap     Java heap size in GB (default: 8)"
-  echo "  -p, --projects Path to projects JSON file (default: projects_fast.json)"
+  echo "  -p, --projects Path to projects JSON file (default: projects_small.json)"
+  echo "  -b, --rebuild  Force rebuild of the compiler jar"
   echo "  -h, --help     Show this help message"
   exit "${1:-0}"
 }
@@ -42,6 +46,7 @@ zparseopts -D -E -F -- \
   i:=flag_inner  -inner:=flag_inner \
   m:=flag_heap     -heap:=flag_heap \
   p:=flag_projects -projects:=flag_projects \
+  b=flag_rebuild -rebuild=flag_rebuild \
   h=flag_help    -help=flag_help \
   || usage 1
 
@@ -52,7 +57,8 @@ fi
 N_OUTER_ITER="${flag_outer[-1]:-10}"
 N_INNER_ITER="${flag_inner[-1]:-10}"
 JAVA_HEAP_SIZE="${flag_heap[-1]:-8}"
-prj_json="${flag_projects[-1]:-projects_fast.json}"
+prj_json="${flag_projects[-1]:-projects_small.json}"
+FORCE_REBUILD="${#flag_rebuild}"
 
 ############################################################
 ## Utils
@@ -96,17 +102,15 @@ function init() {
   EVAL_DIR=$EVAL_DIR_ROOT/$TIMESTAMP
   mkdir -p $EVAL_DIR
 
-  jq -n \
-    --argjson outer "$N_OUTER_ITER" \
-    --argjson inner "$N_INNER_ITER" \
-    --argjson heap "$JAVA_HEAP_SIZE" \
-    '{outer_iterations: $outer, inner_iterations: $inner, java_heap_size_gb: $heap}' \
-    > "$EVAL_DIR/eval_desc.json"
-
-  log_message "saved run parameters to $EVAL_DIR/eval_desc.json" "info"
 }
 
 function build() {
+  # skip build if the jar already exists and rebuild wasn't forced
+  if [[ -f "$EXTENDJ_BENCH_JAR_NAME" ]] && (( ! FORCE_REBUILD )); then
+    log_message "jar already exists, skipping build (use -b to force rebuild)" "info"
+    return
+  fi
+
   # assert that extendj directory exists in the parent dir of this repo
   local extendj_dir="../../../extendj"
 
@@ -127,9 +131,7 @@ function build() {
 
   cp --update=all $jar_path .
 
-
   log_message "building extendj: DONE" "info"
-
 
   if [ ! -f "$EXTENDJ_BENCH_JAR_NAME" ]; then
     error "jar not coppied!"
@@ -138,7 +140,7 @@ function build() {
 }
 
 function clean() {
-  rm $EXTENDJ_BENCH_JAR_NAME
+  # rm $EXTENDJ_BENCH_JAR_NAME
 }
 
 function run-eval() {
@@ -146,6 +148,15 @@ function run-eval() {
   local enabled_benchmarks
   enabled_benchmarks=$(jq -c '[.benchmarks[] | select(.enable == true)]' $prj_json)
   local count=$(jq 'length' <<< $enabled_benchmarks)
+
+  jq -n \
+    --argjson outer "$N_OUTER_ITER" \
+    --argjson inner "$N_INNER_ITER" \
+    --argjson heap "$JAVA_HEAP_SIZE" \
+    '{outer_iterations: $outer, inner_iterations: $inner, java_heap_size_gb: $heap}' \
+    > "$EVAL_DIR/eval_desc.json"
+
+  log_message "saved run parameters to $EVAL_DIR/eval_desc.json" "info"
 
   # for each enabled benchmark
   for ((i = 0; i < $count; i++)); do
@@ -186,7 +197,7 @@ function run-eval() {
       java -Xmx${JAVA_HEAP_SIZE}g -jar ./$EXTENDJ_BENCH_JAR_NAME \
         $N_INNER_ITER \
         -classpath "$classpath" \
-        ${all_files[@]}
+        ${all_files[@]} 2> /dev/null
     done
   done
 }
@@ -197,7 +208,7 @@ function run-eval() {
 
 log_message "running evaluation: n_outer=$N_OUTER_ITER, n_inner=$N_INNER_ITER, heap_size=$JAVA_HEAP_SIZE, project_json=$prj_json" "info"
 
-# init
-# build
-# run-eval
-# clean
+init
+build
+run-eval
+clean
