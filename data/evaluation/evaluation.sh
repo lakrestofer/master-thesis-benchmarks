@@ -57,7 +57,7 @@ fi
 N_OUTER_ITER="${flag_outer[-1]:-10}"
 N_INNER_ITER="${flag_inner[-1]:-10}"
 JAVA_HEAP_SIZE="${flag_heap[-1]:-8}"
-prj_json="${flag_projects[-1]:-projects_small.json}"
+PROJECT_JSON="${flag_projects[-1]:-projects_small.json}"
 FORCE_REBUILD="${#flag_rebuild}"
 
 ############################################################
@@ -144,9 +144,9 @@ function clean() {
 }
 
 function run-eval() {
-  log_message "using json $prj_json" "info"
+  log_message "using json $PROJECT_JSON" "info"
   local enabled_benchmarks
-  enabled_benchmarks=$(jq -c '[.benchmarks[] | select(.enable == true)]' $prj_json)
+  enabled_benchmarks=$(jq -c '[.benchmarks[] | select(.enable == true)]' $PROJECT_JSON)
   local count=$(jq 'length' <<< $enabled_benchmarks)
 
   jq -n \
@@ -190,6 +190,10 @@ function run-eval() {
       done
     fi
 
+    # create the directory containing benchmarking results for this project
+    local bench_dir="$EVAL_DIR/$name"
+    mkdir -p "$bench_dir"
+
     log_message "evaluating $name with $N_OUTER_ITER outer iterations (${#all_files[@]} source files)..." "info"
 
     # for $N_OUTER_ITER times we now run the benchmark
@@ -197,7 +201,7 @@ function run-eval() {
       java -Xmx${JAVA_HEAP_SIZE}g -jar ./$EXTENDJ_BENCH_JAR_NAME \
         $N_INNER_ITER \
         -classpath "$classpath" \
-        ${all_files[@]} 2> /dev/null
+        ${all_files[@]} 2>/dev/null >> "$bench_dir/run_$iter"
     done
   done
 }
@@ -206,7 +210,7 @@ function run-eval() {
 ## run the evaluation
 ############################################################
 
-log_message "running evaluation: n_outer=$N_OUTER_ITER, n_inner=$N_INNER_ITER, heap_size=$JAVA_HEAP_SIZE, project_json=$prj_json" "info"
+log_message "running evaluation: n_outer=$N_OUTER_ITER, n_inner=$N_INNER_ITER, heap_size=$JAVA_HEAP_SIZE, project_json=$PROJECT_JSON" "info"
 
 init
 build
