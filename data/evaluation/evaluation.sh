@@ -129,7 +129,7 @@ function build() {
 
   local jar_path="$extendj_dir/$EXTENDJ_JAVA_VERSION/$EXTENDJ_BENCH_JAR_NAME"
 
-  cp --update=all $jar_path .
+  cp --update $jar_path .
 
   log_message "building extendj: DONE" "info"
 
