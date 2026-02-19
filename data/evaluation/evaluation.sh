@@ -1,24 +1,10 @@
-#!/usr/bin/env zsh
+#!/bin/zsh
 
 # escape sequences for formated output
 CYAN_BOLD="\u001b[36;1m"
 YELLOW_BOLD="\u001b[33;1m"
 RED_BOLD="\u001b[31;1m"
 RESET="\u001b[0m"
-
-# parameters
-EVAL_DIR_ROOT="results"
-EXTENDJ_JAVA_VERSION="java11" # matches directory in extendj repo
-EXTENDJ_BENCH_JAR_NAME="extendj-bench.jar"
-
-# global variables
-EVAL_DIR=""
-
-
-# we do not want the environment to be contaminated with
-# user aliases.
-unalias -m '*' # unset all alias
-
 
 function log_message() {
   local message="$1"
@@ -40,6 +26,34 @@ function log_message() {
       ;;
   esac
 }
+
+# parameters
+EVAL_DIR_ROOT="results"
+EXTENDJ_JAVA_VERSION="java11" # matches directory in extendj repo
+EXTENDJ_BENCH_JAR_NAME="extendj-bench.jar"
+
+# global variables
+EVAL_DIR=""
+
+#arguments
+N_OUTER_ITER="$1"
+N_INNER_ITER="$2"
+if [ "$3" = "fast" ]; then
+  log_message "Running in fast mode. Meaning that a smaller number of iterations will be run on one single project." "info"
+  FAST=true
+else
+  FAST=false
+fi
+
+if [ "$FAST" = true ]; then
+  prj_json="projects_fast.json"
+else
+  prj_json="projects.json"
+fi
+
+# we do not want the environment to be contaminated with
+# user aliases.
+# unalias -m '*' # unset all alias
 
 function error() {
   log_message $1 "error"
@@ -91,7 +105,21 @@ function clean() {
 }
 
 function run-eval() {
-
+  count_total=$(jq '[.benchmarks[]] | length' $prj_json)
+  log_message "using json $prj_json" "info"
+  for ((i = 0; i < $count_total; i++)); do
+    current_benchmark=$(jq -r ".benchmarks[$i]" $prj_json)
+    enable=$(jq -r '.enable' <<< $current_benchmark)
+    if [ "$enable" = "false" ]; then
+      #Skipping the banchmark if not enabled
+      continue
+    fi
+    name=$(jq '.name' <<< $current_benchmark)
+    log_message "evaluating $name with $N_OUTER_ITER outer iterations..." "info"
+    # for i in $(seq 1 $N_OUTER_ITER); do
+    #   echo "$i"
+    # done
+  done
 }
 
 
@@ -103,6 +131,6 @@ function run-eval() {
 
 
 init
-build
+# build
 run-eval
 clean
