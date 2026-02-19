@@ -32,7 +32,7 @@ function usage() {
   echo "  -o, --outer    Number of outer iterations (default: 10)"
   echo "  -i, --inner    Number of inner iterations (default: 10)"
   echo "  -m, --heap     Java heap size in GB (default: 8)"
-  echo "  -f, --fast     Run in fast mode (fewer iterations, single project)"
+  echo "  -p, --projects Path to projects JSON file (default: projects_fast.json)"
   echo "  -h, --help     Show this help message"
   exit "${1:-0}"
 }
@@ -40,8 +40,8 @@ function usage() {
 zparseopts -D -E -F -- \
   o:=flag_outer  -outer:=flag_outer \
   i:=flag_inner  -inner:=flag_inner \
-  m:=flag_heap   -heap:=flag_heap \
-  f=flag_fast    -fast=flag_fast \
+  m:=flag_heap     -heap:=flag_heap \
+  p:=flag_projects -projects:=flag_projects \
   h=flag_help    -help=flag_help \
   || usage 1
 
@@ -52,18 +52,7 @@ fi
 N_OUTER_ITER="${flag_outer[-1]:-10}"
 N_INNER_ITER="${flag_inner[-1]:-10}"
 JAVA_HEAP_SIZE="${flag_heap[-1]:-8}"
-
-if (( ${#flag_fast} )); then
-  FAST=true
-else
-  FAST=false
-fi
-
-if [ "$FAST" = true ]; then
-  prj_json="projects_fast.json"
-else
-  prj_json="projects.json"
-fi
+prj_json="${flag_projects[-1]:-projects_fast.json}"
 
 ############################################################
 ## Utils
