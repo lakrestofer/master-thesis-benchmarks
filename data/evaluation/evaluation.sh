@@ -202,6 +202,7 @@ function run-eval() {
         $N_INNER_ITER \
         -classpath "$classpath" \
         ${all_files[@]} 2>/dev/null >> "$bench_dir/run_$iter"
+        # ${all_files[@]} >> "$bench_dir/run_$iter"
     done
   done
 }
