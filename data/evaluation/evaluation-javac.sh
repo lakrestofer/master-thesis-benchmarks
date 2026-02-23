@@ -47,7 +47,6 @@ zparseopts -D -E -F -- \
   m:=flag_heap     -heap:=flag_heap \
   p:=flag_projects -projects:=flag_projects \
   b=flag_rebuild -rebuild=flag_rebuild \
-  w=flag_warnings -warnings=flag_warnings \
   h=flag_help    -help=flag_help \
   || usage 1
 
@@ -60,7 +59,6 @@ N_INNER_ITER="${flag_inner[-1]:-10}"
 JAVA_HEAP_SIZE="${flag_heap[-1]:-8}"
 PROJECT_JSON="${flag_projects[-1]:-projects_small.json}"
 FORCE_REBUILD="${#flag_rebuild}"
-ENABLE_WARNINGS="${#flag_warnings}"
 
 ############################################################
 ## Utils
@@ -200,17 +198,10 @@ function run-eval() {
 
     # for $N_OUTER_ITER times we now run the benchmark
     for ((iter = 1; iter <= $N_OUTER_ITER; iter++)); do
-      if (( ENABLE_WARNINGS )); then
-        java -Xmx${JAVA_HEAP_SIZE}g -jar ./$EXTENDJ_BENCH_JAR_NAME \
-          $N_INNER_ITER \
-          -classpath "$classpath" \
-          ${all_files[@]} >> "$bench_dir/run_$iter"
-      else
-        java -Xmx${JAVA_HEAP_SIZE}g -jar ./$EXTENDJ_BENCH_JAR_NAME \
-          $N_INNER_ITER \
-          -classpath "$classpath" \
-          ${all_files[@]} 2>/dev/null >> "$bench_dir/run_$iter"
-      fi
+      # TODO Add inner loop
+      javac -classpath "$classpath" \
+        ${all_files[@]} >> "$bench_dir/run_$iter"
+        # ${all_files[@]} 2>/dev/null >> "$bench_dir/run_$iter"
     done
   done
 }
