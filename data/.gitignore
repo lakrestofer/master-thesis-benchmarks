@@ -47,3 +47,5 @@ extendj-bench.jar
 **/.classpath
 **/.project
 **/.settings
+
+log.csv
