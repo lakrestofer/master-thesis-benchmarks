@@ -1,0 +1,87 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+def plot_computation_nesting():
+    # Read the CSV file
+    csv_path = Path(__file__).parent / "log.csv"
+    print(f"Reading CSV file: {csv_path}")
+
+    # Read CSV with tab delimiter, assuming columns: event_type, context, timestamp
+    df = pd.read_csv(csv_path, sep='\t', header=None, names=['event_type', 'context', 'timestamp'])
+    print(f"Loaded {len(df):,} total events from CSV")
+
+    # Count COMPUTE_BEGIN and COMPUTE_END events
+    compute_event_count = df['event_type'].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
+    print(f"Found {compute_event_count:,} computation events (COMPUTE_BEGIN/COMPUTE_END)")
+    print(f"Processing all {len(df):,} events (keeping nesting level constant for non-compute events)")
+
+    if df.empty:
+        print("No events found in the log file.")
+        return
+
+    # Track nesting level over time using vectorized operations
+    print("Calculating nesting levels (vectorized)...")
+
+    # Convert to numpy arrays for faster processing
+    timestamps_raw = df['timestamp'].values
+    event_types = df['event_type'].values
+
+    # Convert event types to deltas: +1 for BEGIN, -1 for END, 0 for everything else
+    deltas = np.where(event_types == 'COMPUTE_BEGIN', 1,
+                     np.where(event_types == 'COMPUTE_END', -1, 0))
+
+    # Calculate cumulative nesting levels
+    cumulative_levels = np.cumsum(deltas)
+
+    # Level before each event: shift cumulative by 1, starting at 0
+    levels_before = np.concatenate([[0], cumulative_levels[:-1]])
+    levels_after = cumulative_levels
+
+    # Interleave timestamps and levels to create step plot
+    # For each event: (timestamp, level_before), (timestamp, level_after)
+    timestamps = np.repeat(timestamps_raw, 2)
+    nesting_levels = np.empty(len(timestamps_raw) * 2, dtype=int)
+    nesting_levels[0::2] = levels_before  # Even indices: before
+    nesting_levels[1::2] = levels_after   # Odd indices: after
+
+    # Duplicate event types to match the interleaved timestamps
+    event_types_plot = np.repeat(event_types, 2)
+
+    print(f"Finished processing all {len(df):,} events")
+
+    # # Normalize timestamps to start from 0
+    # print("Normalizing timestamps...")
+    # min_t = min(timestamps)
+    # timestamps = [t - min_t for t in timestamps]
+
+    # Create the plot
+    print("Creating scatter plot...")
+    plt.figure(figsize=(14, 6))
+    plt.scatter(timestamps, nesting_levels, alpha=0.6, s=1)
+    plt.xlabel("Time (nanoseconds from start)", fontsize=12)
+    plt.ylabel("Nesting Level", fontsize=12)
+    plt.title("Computation Event Nesting Levels Over Time", fontsize=14, fontweight='bold')
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+
+    # Display stats
+    max_level = nesting_levels.max() if len(nesting_levels) > 0 else 0
+    print("\n" + "="*60)
+    print("STATISTICS:")
+    print("="*60)
+    print(f"Maximum nesting level: {max_level}")
+    print(f"Total events processed: {len(df):,}")
+    print(f"Computation events (BEGIN/END): {compute_event_count:,}")
+    print(f"Time range: {timestamps[-1]:,} ns ({timestamps[-1] / 1e9:.3f} seconds)")
+    print("="*60 + "\n")
+
+    # Save plot to file
+    output_path = Path(__file__).parent / "nesting_levels_plot.png"
+    print(f"Saving plot to: {output_path}")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    print(f"Plot saved successfully!")
+
+if __name__ == "__main__":
+    plot_computation_nesting()
