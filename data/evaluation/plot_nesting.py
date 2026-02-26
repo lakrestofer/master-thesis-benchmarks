@@ -59,10 +59,37 @@ def plot_computation_nesting():
     # Create the plot
     print("Creating scatter plot...")
     plt.figure(figsize=(14, 6))
-    plt.scatter(timestamps, nesting_levels, alpha=0.6, s=1)
+
+    # Downsample for faster rendering (plot every Nth point)
+    downsample_factor = max(1, len(timestamps) // 1000000)  # Target ~100k points
+    print(f"Downsampling by factor of {downsample_factor} for visualization")
+
+    timestamps_plot = timestamps[::downsample_factor]
+    nesting_levels_plot = nesting_levels[::downsample_factor]
+    event_types_sampled = event_types_plot[::downsample_factor]
+
+    # Plot COMPUTE_BEGIN and COMPUTE_END in distinct colors, others in gray
+    mask_begin = event_types_sampled == 'COMPUTE_BEGIN'
+    mask_end = event_types_sampled == 'COMPUTE_END'
+    mask_other = ~(mask_begin | mask_end)
+
+    # Plot others first (in background)
+    if mask_other.any():
+        plt.scatter(timestamps_plot[mask_other], nesting_levels_plot[mask_other],
+                   c='lightgray', alpha=0.3, s=1, label='Other events')
+
+    # Plot BEGIN and END events on top
+    if mask_begin.any():
+        plt.scatter(timestamps_plot[mask_begin], nesting_levels_plot[mask_begin],
+                   c='green', alpha=0.7, s=2, label='COMPUTE_BEGIN')
+    if mask_end.any():
+        plt.scatter(timestamps_plot[mask_end], nesting_levels_plot[mask_end],
+                   c='red', alpha=0.7, s=2, label='COMPUTE_END')
+
     plt.xlabel("Time (nanoseconds from start)", fontsize=12)
     plt.ylabel("Nesting Level", fontsize=12)
-    plt.title("Computation Event Nesting Levels Over Time", fontsize=14, fontweight='bold')
+    plt.title("Computation Event Nesting Levels Over Time (Downsampled)", fontsize=14, fontweight='bold')
+    plt.legend(loc='upper right', fontsize=9)
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
 
