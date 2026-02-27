@@ -77,9 +77,16 @@ def plot_computation_nesting(csv_path):
     # min_t = min(timestamps)
     # timestamps = [t - min_t for t in timestamps]
 
-    # Create the plot
+    # Get unique aspects and create color mapping
+    unique_aspects = df['aspect'].unique()
+    aspect_colors = {aspect: string_to_hex_color(aspect) for aspect in unique_aspects}
+    print(f"Found {len(unique_aspects)} unique aspects")
+
+    # Create the plot with dynamic height based on number of aspects
     print("Creating scatter plot...")
-    plt.figure(figsize=(14, 6))
+    # Calculate figure height to accommodate legend (minimum 8, scale with aspects, max 20)
+    fig_height = max(8, min(20, 8 + len(unique_aspects) * 0.15))
+    fig, ax = plt.subplots(figsize=(18, fig_height))
 
     # Downsample for faster rendering (plot every Nth point)
     downsample_factor = max(1, len(timestamps) // 1000000)  # Target ~100k points
@@ -91,26 +98,27 @@ def plot_computation_nesting(csv_path):
     event_types_sampled = event_types_plot[::downsample_factor]
     aspects_sampled = aspects_plot[::downsample_factor]
 
-    # Get unique aspects and create color mapping
-    unique_aspects = df['aspect'].unique()
-    aspect_colors = {aspect: string_to_hex_color(aspect) for aspect in unique_aspects}
-    print(f"Found {len(unique_aspects)} unique aspects")
-
     # Plot the line connecting all points
-    plt.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.2, linewidth=0.5, zorder=1)
+    ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.2, linewidth=0.5, zorder=1)
 
     # Plot each aspect with its unique color
     for aspect in unique_aspects:
         mask = aspects_sampled == aspect
         if mask.any():
-            plt.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
+            ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
                        c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
 
-    plt.xlabel("Time (nanoseconds from start)", fontsize=12)
-    plt.ylabel("Nesting Level", fontsize=12)
-    plt.title("Computation Event Nesting Levels Over Time (Downsampled)", fontsize=14, fontweight='bold')
-    plt.legend(loc='upper right', fontsize=9)
-    plt.grid(True, alpha=0.3)
+    ax.set_xlabel("Time (nanoseconds from start)", fontsize=12)
+    ax.set_ylabel("Nesting Level", fontsize=12)
+    ax.set_title("Computation Event Nesting Levels Over Time (Downsampled)", fontsize=14, fontweight='bold')
+
+    # Place legend outside plot area with multiple columns and smaller font
+    # Calculate number of columns based on number of aspects (max 3 columns)
+    ncols = min(3, max(1, len(unique_aspects) // 10))
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=7,
+              ncol=ncols, framealpha=0.9, markerscale=2)
+
+    ax.grid(True, alpha=0.3)
     plt.tight_layout()
 
     # Display stats
