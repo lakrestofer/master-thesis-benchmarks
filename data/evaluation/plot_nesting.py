@@ -91,14 +91,14 @@ def plot_computation_nesting(csv_path):
 
     # Plot the line connecting all points
     # ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.5, linewidth=0.5, zorder=1)
-    ax.plot(timestamps_plot, nesting_levels_plot, linewidth=0.5, zorder=1)
+    ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', linewidth=0.25, zorder=1)
 
     # Plot each aspect with its unique color
     for aspect in unique_aspects:
         mask = aspects_sampled == aspect
         if mask.any():
             ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
-                       c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
+                       c=aspect_colors[aspect], alpha=0.7, s=7, label=aspect, zorder=2)
 
     # Build KD-tree for fast hover lookup
     # Normalize coordinates for KD-tree (timestamps and levels have very different scales)

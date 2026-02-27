@@ -36,7 +36,7 @@ with open('log.csv', newline='') as logfile:
         c += [string_to_hex_color(event)]
 
 print("Creating plot...")
-plt.scatter(x, y, c=c)
+plt.plot(x, y)
 print("Saving plot...")
-# plt.savefig('result.png')
-plt.show()
+plt.savefig('result.png')
+# plt.show()
