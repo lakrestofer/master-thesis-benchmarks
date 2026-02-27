@@ -101,12 +101,14 @@ def plot_computation_nesting(csv_path):
     # Plot the line connecting all points
     ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.2, linewidth=0.5, zorder=1)
 
-    # Plot each aspect with its unique color
+    # Plot each aspect with its unique color and store scatter objects for hover
+    scatter_objects = []
     for aspect in unique_aspects:
         mask = aspects_sampled == aspect
         if mask.any():
-            ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
-                       c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
+            sc = ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
+                           c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
+            scatter_objects.append((sc, aspect, timestamps_plot[mask], nesting_levels_plot[mask]))
 
     ax.set_xlabel("Time (nanoseconds from start)", fontsize=12)
     ax.set_ylabel("Nesting Level", fontsize=12)
@@ -119,6 +121,34 @@ def plot_computation_nesting(csv_path):
               ncol=ncols, framealpha=0.9, markerscale=2)
 
     ax.grid(True, alpha=0.3)
+
+    # Add hover tooltip functionality
+    annot = ax.annotate("", xy=(0,0), xytext=(10,10), textcoords="offset points",
+                        bbox=dict(boxstyle="round,pad=0.5", fc="yellow", alpha=0.9),
+                        arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
+                        fontsize=9, visible=False, zorder=10)
+
+    def hover(event):
+        if event.inaxes == ax:
+            # Check each scatter plot to find if we're hovering over a point
+            for sc, aspect, x_data, y_data in scatter_objects:
+                cont, ind = sc.contains(event)
+                if cont:
+                    # Get the index of the point being hovered over
+                    idx = ind["ind"][0]
+                    # Update annotation with aspect name and position
+                    annot.xy = (x_data[idx], y_data[idx])
+                    annot.set_text(f"Aspect: {aspect}\nTime: {x_data[idx]:,.0f} ns\nLevel: {y_data[idx]}")
+                    annot.set_visible(True)
+                    fig.canvas.draw_idle()
+                    return
+            # If not hovering over any point, hide annotation
+            if annot.get_visible():
+                annot.set_visible(False)
+                fig.canvas.draw_idle()
+
+    fig.canvas.mpl_connect("motion_notify_event", hover)
+
     plt.tight_layout()
 
     # Display stats
