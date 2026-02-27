@@ -2,18 +2,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import argparse
 
-def plot_computation_nesting():
+def plot_computation_nesting(csv_path):
     # Read the CSV file
-    csv_path = Path(__file__).parent / "log.csv"
     print(f"Reading CSV file: {csv_path}")
 
-    # Read CSV with tab delimiter, assuming columns: event_type, context, timestamp
-    df = pd.read_csv(csv_path, sep='\t', header=None, names=['event_type', 'context', 'timestamp'])
+    # Read CSV with tab delimiter, assuming columns: astNodeId, eventName, astNodeName, timestamp
+    df = pd.read_csv(csv_path, sep='\t', header=None, names=['astNodeId', 'eventName', 'astNodeName', 'timestamp'])
     print(f"Loaded {len(df):,} total events from CSV")
 
     # Count COMPUTE_BEGIN and COMPUTE_END events
-    compute_event_count = df['event_type'].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
+    compute_event_count = df['eventName'].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
     print(f"Found {compute_event_count:,} computation events (COMPUTE_BEGIN/COMPUTE_END)")
     print(f"Processing all {len(df):,} events (keeping nesting level constant for non-compute events)")
 
@@ -26,7 +26,7 @@ def plot_computation_nesting():
 
     # Convert to numpy arrays for faster processing
     timestamps_raw = df['timestamp'].values
-    event_types = df['event_type'].values
+    event_types = df['eventName'].values
 
     # Convert event types to deltas: +1 for BEGIN, -1 for END, 0 for everything else
     deltas = np.where(event_types == 'COMPUTE_BEGIN', 1,
@@ -62,6 +62,7 @@ def plot_computation_nesting():
 
     # Downsample for faster rendering (plot every Nth point)
     downsample_factor = max(1, len(timestamps) // 1000000)  # Target ~100k points
+    # downsample_factor = 1
     print(f"Downsampling by factor of {downsample_factor} for visualization")
 
     timestamps_plot = timestamps[::downsample_factor]
@@ -111,4 +112,15 @@ def plot_computation_nesting():
     print(f"Plot saved successfully!")
 
 if __name__ == "__main__":
-    plot_computation_nesting()
+    parser = argparse.ArgumentParser(description='Plot computation event nesting levels over time')
+    parser.add_argument('csv_file', nargs='?', default=None,
+                        help='Path to the CSV log file (default: log.csv in script directory)')
+    args = parser.parse_args()
+
+    # Use provided path or default to log.csv in the script's directory
+    if args.csv_file:
+        csv_path = Path(args.csv_file)
+    else:
+        csv_path = Path(__file__).parent / "log.csv"
+
+    plot_computation_nesting(csv_path)
