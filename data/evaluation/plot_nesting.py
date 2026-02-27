@@ -8,8 +8,8 @@ def plot_computation_nesting(csv_path):
     # Read the CSV file
     print(f"Reading CSV file: {csv_path}")
 
-    # Read CSV with tab delimiter, assuming columns: astNodeId, eventName, astNodeName, timestamp
-    df = pd.read_csv(csv_path, sep='\t', header=None, names=['astNodeId', 'eventName', 'astNodeName', 'timestamp'])
+    # Read CSV with tab delimiter, assuming columns: timestamp, astNodeId, astNodeName, attribute, eventName
+    df = pd.read_csv(csv_path, sep='\t', header=None, names=['timestamp', 'astNodeId', 'astNodeName', 'attribute', 'eventName'])
     print(f"Loaded {len(df):,} total events from CSV")
 
     # Count COMPUTE_BEGIN and COMPUTE_END events
@@ -74,18 +74,19 @@ def plot_computation_nesting(csv_path):
     mask_end = event_types_sampled == 'COMPUTE_END'
     mask_other = ~(mask_begin | mask_end)
 
+    plt.plot(timestamps_plot, nesting_levels_plot, zorder=1)
     # Plot others first (in background)
     if mask_other.any():
         plt.scatter(timestamps_plot[mask_other], nesting_levels_plot[mask_other],
-                   c='lightgray', alpha=0.3, s=1, label='Other events')
+                   c='lightgray', alpha=0.3, s=1, label='Other events', zorder=2)
 
     # Plot BEGIN and END events on top
     if mask_begin.any():
         plt.scatter(timestamps_plot[mask_begin], nesting_levels_plot[mask_begin],
-                   c='green', alpha=0.7, s=2, label='COMPUTE_BEGIN')
+                   c='green', alpha=0.7, s=2, label='COMPUTE_BEGIN', zorder=2)
     if mask_end.any():
         plt.scatter(timestamps_plot[mask_end], nesting_levels_plot[mask_end],
-                   c='red', alpha=0.7, s=2, label='COMPUTE_END')
+                   c='red', alpha=0.7, s=2, label='COMPUTE_END', zorder=2)
 
     plt.xlabel("Time (nanoseconds from start)", fontsize=12)
     plt.ylabel("Nesting Level", fontsize=12)
@@ -108,7 +109,8 @@ def plot_computation_nesting(csv_path):
     # Save plot to file
     output_path = Path(__file__).parent / "nesting_levels_plot.png"
     print(f"Saving plot to: {output_path}")
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    # plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.show()
     print(f"Plot saved successfully!")
 
 if __name__ == "__main__":

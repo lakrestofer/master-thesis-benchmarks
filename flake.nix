@@ -30,6 +30,13 @@
 
           # jdkPackage = pkgs.jdk8;
           jdkPackage = pkgs.jdk11;
+
+          python-pkg = (
+            pkgs.python3.withPackages (pp: [
+              pp.pyqt6
+            ])
+          );
+
         in
         {
           default = devenv.lib.mkShell {
@@ -40,11 +47,61 @@
                   enable = true;
                   jdk.package = jdkPackage;
                 };
-                # # https://devenv.sh/reference/options/
-                packages = with pkgs; [
-                  # (async-profiler.override { jdk = jdkPackage; })
-                  bash-language-server
-                ];
+                packages =
+                  (with pkgs; [
+                    bash-language-server
+                    uv
+                    # Qt6 system dependencies for cadquery-visualizer
+                    libGL
+                    libxkbcommon
+                    xorg.libX11
+                    xorg.libXrender
+                    xorg.libXext
+                    xorg.libxcb
+                    xorg.xcbutilwm
+                    xorg.xcbutilimage
+                    xorg.xcbutilkeysyms
+                    xorg.xcbutilrenderutil
+                    xorg.xcbutilcursor
+                    wayland
+                    fontconfig
+                    freetype
+                    zstd
+                    glib
+                    zlib
+                  ])
+                  ++ [
+                    python-pkg
+                  ];
+
+                env = {
+                  # makeLibraryPath adds /lib to derivation outputs.
+                  # For raw string paths like /run/opengl-driver/lib, concatenate directly.
+                  LD_LIBRARY_PATH =
+                    (pkgs.lib.makeLibraryPath (
+                      with pkgs;
+                      [
+                        libGL
+                        libxkbcommon
+                        xorg.libX11
+                        xorg.libXrender
+                        xorg.libXext
+                        xorg.libxcb
+                        xorg.xcbutilwm
+                        xorg.xcbutilimage
+                        xorg.xcbutilkeysyms
+                        xorg.xcbutilrenderutil
+                        xorg.xcbutilcursor
+                        wayland
+                        fontconfig
+                        freetype
+                        zstd
+                        glib
+                        zlib
+                      ]
+                    ))
+                    + ":/run/opengl-driver/lib:/run/opengl-driver-32/lib";
+                };
 
                 # enterShell = ''
                 #   hello
@@ -53,7 +110,7 @@
                 # processes.hello.exec = "hello";
                 languages.python = {
                   enable = true;
-                  # package = python-pkg;
+                  package = python-pkg;
                   manylinux.enable = true;
                   uv = {
                     enable = true;
