@@ -3,13 +3,32 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
+import hashlib
+
+def string_to_hex_color(text: str) -> str:
+    """
+    Converts a string into a deterministic hex color code.
+    Example: "hello" -> "#5d4140"
+    """
+    if type(text) is not str:
+        return "#000000"
+    # Create SHA-256 hash of the string
+    hash_bytes = hashlib.sha256(text.encode('utf-8')).digest()
+
+    # Use first 3 bytes for RGB
+    r, g, b = hash_bytes[0], hash_bytes[1], hash_bytes[2]
+
+    return f'#{r:02x}{g:02x}{b:02x}'
 
 def plot_computation_nesting(csv_path):
     # Read the CSV file
     print(f"Reading CSV file: {csv_path}")
 
     # Read CSV with tab delimiter, assuming columns: timestamp, astNodeId, astNodeName, attribute, eventName
-    df = pd.read_csv(csv_path, sep='\t', header=None, names=['timestamp', 'astNodeId', 'astNodeName', 'attribute', 'eventName'])
+    # Explicitly set aspect as string type to avoid sorting/type issues
+    df = pd.read_csv(csv_path, sep='\t', header=None,
+                     names=['timestamp', 'aspect', 'astNodeId', 'astNodeName', 'attribute', 'eventName'],
+                     dtype={'aspect': str, 'astNodeName': str, 'attribute': str, 'eventName': str})
     print(f"Loaded {len(df):,} total events from CSV")
 
     # Count COMPUTE_BEGIN and COMPUTE_END events
@@ -27,6 +46,7 @@ def plot_computation_nesting(csv_path):
     # Convert to numpy arrays for faster processing
     timestamps_raw = df['timestamp'].values
     event_types = df['eventName'].values
+    aspects = df['aspect'].values
 
     # Convert event types to deltas: +1 for BEGIN, -1 for END, 0 for everything else
     deltas = np.where(event_types == 'COMPUTE_BEGIN', 1,
@@ -46,8 +66,9 @@ def plot_computation_nesting(csv_path):
     nesting_levels[0::2] = levels_before  # Even indices: before
     nesting_levels[1::2] = levels_after   # Odd indices: after
 
-    # Duplicate event types to match the interleaved timestamps
+    # Duplicate event types and aspects to match the interleaved timestamps
     event_types_plot = np.repeat(event_types, 2)
+    aspects_plot = np.repeat(aspects, 2)
 
     print(f"Finished processing all {len(df):,} events")
 
@@ -68,25 +89,22 @@ def plot_computation_nesting(csv_path):
     timestamps_plot = timestamps[::downsample_factor]
     nesting_levels_plot = nesting_levels[::downsample_factor]
     event_types_sampled = event_types_plot[::downsample_factor]
+    aspects_sampled = aspects_plot[::downsample_factor]
 
-    # Plot COMPUTE_BEGIN and COMPUTE_END in distinct colors, others in gray
-    mask_begin = event_types_sampled == 'COMPUTE_BEGIN'
-    mask_end = event_types_sampled == 'COMPUTE_END'
-    mask_other = ~(mask_begin | mask_end)
+    # Get unique aspects and create color mapping
+    unique_aspects = df['aspect'].unique()
+    aspect_colors = {aspect: string_to_hex_color(aspect) for aspect in unique_aspects}
+    print(f"Found {len(unique_aspects)} unique aspects")
 
-    plt.plot(timestamps_plot, nesting_levels_plot, zorder=1)
-    # Plot others first (in background)
-    if mask_other.any():
-        plt.scatter(timestamps_plot[mask_other], nesting_levels_plot[mask_other],
-                   c='lightgray', alpha=0.3, s=1, label='Other events', zorder=2)
+    # Plot the line connecting all points
+    plt.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.2, linewidth=0.5, zorder=1)
 
-    # Plot BEGIN and END events on top
-    if mask_begin.any():
-        plt.scatter(timestamps_plot[mask_begin], nesting_levels_plot[mask_begin],
-                   c='green', alpha=0.7, s=2, label='COMPUTE_BEGIN', zorder=2)
-    if mask_end.any():
-        plt.scatter(timestamps_plot[mask_end], nesting_levels_plot[mask_end],
-                   c='red', alpha=0.7, s=2, label='COMPUTE_END', zorder=2)
+    # Plot each aspect with its unique color
+    for aspect in unique_aspects:
+        mask = aspects_sampled == aspect
+        if mask.any():
+            plt.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
+                       c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
 
     plt.xlabel("Time (nanoseconds from start)", fontsize=12)
     plt.ylabel("Nesting Level", fontsize=12)
@@ -103,6 +121,7 @@ def plot_computation_nesting(csv_path):
     print(f"Maximum nesting level: {max_level}")
     print(f"Total events processed: {len(df):,}")
     print(f"Computation events (BEGIN/END): {compute_event_count:,}")
+    print(f"Unique aspects: {len(unique_aspects)}")
     print(f"Time range: {timestamps[-1]:,} ns ({timestamps[-1] / 1e9:.3f} seconds)")
     print("="*60 + "\n")
 
