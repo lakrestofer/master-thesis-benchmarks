@@ -1,3 +1,4 @@
+from sys import exit
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -5,6 +6,23 @@ from pathlib import Path
 import argparse
 import hashlib
 from scipy.spatial import KDTree
+import time
+from enum import Enum
+
+############################################################
+# Type definitions
+############################################################
+
+class RenderingMode(Enum):
+    File = "file"
+    Gui = "gui"
+
+    def __str__(self):
+        return self.value
+
+############################################################
+# Util functions
+#############################################################
 
 def string_to_hex_color(text: str) -> str:
     """
@@ -14,6 +32,7 @@ def string_to_hex_color(text: str) -> str:
     if type(text) is not str:
         return "#000000"
     # Create SHA-256 hash of the string
+    # TODO we probably do not need a crypographically secure hash here :D
     hash_bytes = hashlib.sha256(text.encode('utf-8')).digest()
 
     # Use first 3 bytes for RGB
@@ -22,15 +41,25 @@ def string_to_hex_color(text: str) -> str:
     return f'#{r:02x}{g:02x}{b:02x}'
 
 def plot_computation_nesting(csv_path):
+    # Track timing for all major steps
+    timings = {}
+    overall_start = time.perf_counter()
+
     # Read the CSV file
     print(f"Reading CSV file: {csv_path}")
+
+    # Time the CSV parsing
+    step_start = time.perf_counter()
 
     # Read CSV with tab delimiter, assuming columns: timestamp, astNodeId, astNodeName, attribute, eventName
     # Explicitly set aspect as string type to avoid sorting/type issues
     df = pd.read_csv(csv_path, sep='\t', header=None,
                      names=['timestamp', 'aspect', 'astNodeId', 'astNodeName', 'attribute', 'eventName'],
                      dtype={'aspect': str, 'astNodeName': str, 'attribute': str, 'eventName': str})
-    print(f"Loaded {len(df):,} total events from CSV")
+
+    timings['csv_parsing'] = time.perf_counter() - step_start
+
+    print(f"Loaded {len(df):,} total events from CSV (took {timings['csv_parsing']:.3f}s)")
 
     # Count COMPUTE_BEGIN and COMPUTE_END events
     compute_event_count = df['eventName'].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
@@ -43,6 +72,7 @@ def plot_computation_nesting(csv_path):
 
     # Track nesting level over time using vectorized operations
     print("Calculating nesting levels (vectorized)...")
+    step_start = time.perf_counter()
 
     # Convert to numpy arrays for faster processing
     timestamps_raw = df['timestamp'].values
@@ -60,7 +90,8 @@ def plot_computation_nesting(csv_path):
     # Use raw data directly - one point per event (no duplication)
     timestamps = timestamps_raw
 
-    print(f"Finished processing all {len(df):,} events")
+    timings['nesting_calculation'] = time.perf_counter() - step_start
+    print(f"Finished processing all {len(df):,} events (took {timings['nesting_calculation']:.3f}s)")
 
     # # Normalize timestamps to start from 0
     # print("Normalizing timestamps...")
@@ -68,12 +99,15 @@ def plot_computation_nesting(csv_path):
     # timestamps = [t - min_t for t in timestamps]
 
     # Get unique aspects and create color mapping
+    step_start = time.perf_counter()
     unique_aspects = df['aspect'].unique()
     aspect_colors = {aspect: string_to_hex_color(aspect) for aspect in unique_aspects}
-    print(f"Found {len(unique_aspects)} unique aspects")
+    timings['aspect_colors'] = time.perf_counter() - step_start
+    print(f"Found {len(unique_aspects)} unique aspects (took {timings['aspect_colors']:.3f}s)")
 
     # Create the plot with dynamic height based on number of aspects
     print("Creating scatter plot...")
+    step_start = time.perf_counter()
     # Calculate figure height to accommodate legend (minimum 8, scale with aspects, max 20)
     fig_height = max(8, min(20, 8 + len(unique_aspects) * 0.15))
     fig, ax = plt.subplots(figsize=(18, fig_height))
@@ -88,8 +122,10 @@ def plot_computation_nesting(csv_path):
     event_types_sampled = event_types[::downsample_factor]
     aspects_sampled = aspects[::downsample_factor]
     attributes_sampled = attributes[::downsample_factor]
+    timings['plot_setup'] = time.perf_counter() - step_start
 
     # Plot the line connecting all points
+    step_start = time.perf_counter()
     # ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.5, linewidth=0.5, zorder=1)
     ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', linewidth=0.25, zorder=1)
 
@@ -98,9 +134,12 @@ def plot_computation_nesting(csv_path):
         mask = aspects_sampled == aspect
         if mask.any():
             ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
-                       c=aspect_colors[aspect], alpha=0.7, s=7, label=aspect, zorder=2)
+                       c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
+    timings['plotting'] = time.perf_counter() - step_start
+    print(f"Plotting complete (took {timings['plotting']:.3f}s)")
 
     # Build KD-tree for fast hover lookup
+    step_start = time.perf_counter()
     # Normalize coordinates for KD-tree (timestamps and levels have very different scales)
     timestamp_range = timestamps_plot.max() - timestamps_plot.min()
     level_range = nesting_levels_plot.max() - nesting_levels_plot.min()
@@ -111,9 +150,11 @@ def plot_computation_nesting(csv_path):
         (nesting_levels_plot - nesting_levels_plot.min()) / level_range
     ])
     kdtree = KDTree(points_normalized)
+    timings['kdtree_build'] = time.perf_counter() - step_start
 
-    print(f"Built KD-tree with {len(points_normalized):,} points for fast hover lookup")
+    print(f"Built KD-tree with {len(points_normalized):,} points for fast hover lookup (took {timings['kdtree_build']:.3f}s)")
 
+    step_start = time.perf_counter()
     ax.set_xlabel("Time (nanoseconds from start)", fontsize=12)
     ax.set_ylabel("Nesting Level", fontsize=12)
     ax.set_title("Computation Event Nesting Levels Over Time (Downsampled)", fontsize=14, fontweight='bold')
@@ -163,39 +204,77 @@ def plot_computation_nesting(csv_path):
             fig.canvas.draw_idle()
 
     fig.canvas.mpl_connect("motion_notify_event", hover)
+    timings['plot_finalization'] = time.perf_counter() - step_start
 
     plt.tight_layout()
 
+    timings['total'] = time.perf_counter() - overall_start
+
+    # Display detailed timing breakdown
+    print("\n" + "="*60)
+    print("PERFORMANCE TIMING BREAKDOWN:")
+    print("="*60)
+    file_size_mb = csv_path.stat().st_size / (1024*1024)
+    print(f"CSV Parsing:          {timings['csv_parsing']:>8.3f}s  ({file_size_mb/timings['csv_parsing']:>6.1f} MB/s)")
+    print(f"Nesting Calculation:  {timings['nesting_calculation']:>8.3f}s  ({len(df)/timings['nesting_calculation']:>6.0f} events/s)")
+    print(f"Aspect Colors:        {timings['aspect_colors']:>8.3f}s")
+    print(f"Plot Setup:           {timings['plot_setup']:>8.3f}s")
+    print(f"Plotting:             {timings['plotting']:>8.3f}s")
+    print(f"KD-tree Build:        {timings['kdtree_build']:>8.3f}s")
+    print(f"Plot Finalization:    {timings['plot_finalization']:>8.3f}s")
+    print("-" * 60)
+    print(f"TOTAL TIME:           {timings['total']:>8.3f}s")
+    print("="*60)
+
+    # Calculate percentages
+    print("\nTime Distribution:")
+    for step, duration in sorted(timings.items(), key=lambda x: x[1], reverse=True):
+        if step != 'total':
+            percentage = (duration / timings['total']) * 100
+            print(f"  {step:.<25} {percentage:>5.1f}%")
+    print("="*60 + "\n")
+
     # Display stats
     max_level = nesting_levels.max() if len(nesting_levels) > 0 else 0
-    print("\n" + "="*60)
-    print("STATISTICS:")
+    print("DATA STATISTICS:")
     print("="*60)
     print(f"Maximum nesting level: {max_level}")
     print(f"Total events processed: {len(df):,}")
     print(f"Computation events (BEGIN/END): {compute_event_count:,}")
     print(f"Unique aspects: {len(unique_aspects)}")
     print(f"Time range: {timestamps[-1]:,} ns ({timestamps[-1] / 1e9:.3f} seconds)")
+    print(f"File size: {file_size_mb:.2f} MB")
     print("="*60 + "\n")
 
     # Save plot to file
-    output_path = Path(__file__).parent / "nesting_levels_plot.png"
-    print(f"Saving plot to: {output_path}")
-    # plt.savefig(output_path, dpi=300, bbox_inches='tight')
     plt.show()
     plt.tight_layout()
+
+    output_path = Path(__file__).parent / "nesting_levels_plot.png"
+    print(f"Saving plot to: {output_path}")
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
     # print("Plot saved successfully!")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot computation event nesting levels over time')
-    parser.add_argument('csv_file', nargs='?', default=None,
-                        help='Path to the CSV log file (default: log.csv in script directory)')
+    parser.add_argument(
+        'csv_file',
+        type=str,
+        help='Path to the CSV log file (default: log.csv in script directory)',
+    )
+    parser.add_argument(
+        '--render_output',
+        default=RenderingMode.Gui,
+        type=RenderingMode,
+        choices=list(RenderingMode),
+        help='How this script should render the graphs, to a file, or to an interactive gui',
+    )
     args = parser.parse_args()
 
-    # Use provided path or default to log.csv in the script's directory
-    if args.csv_file:
-        csv_path = Path(args.csv_file)
-    else:
-        csv_path = Path(__file__).parent / "log.csv"
+    csv_path = Path(args.csv_file)
+    rendering_mode = args.render_output
+
+    print(f"reading file {csv_path}")
+    print(f"rendering mode {rendering_mode}")
 
     plot_computation_nesting(csv_path)
