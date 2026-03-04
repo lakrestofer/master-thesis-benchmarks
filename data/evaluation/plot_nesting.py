@@ -211,6 +211,9 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
             # Find nearest point using KD-tree (very fast!)
             distance, idx = kdtree.query([mouse_x_norm, mouse_y_norm])
 
+            if event_types_sampled[idx].startswith('COMPUTE_'):
+                return
+
             # Only show tooltip if mouse is close enough (threshold in normalized space)
             # Adjust threshold based on plot size - smaller threshold = need to be closer
             threshold = 0.01  # Normalized distance threshold
@@ -232,7 +235,7 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
             annot.set_visible(False)
             fig.canvas.draw_idle()
 
-    fig.canvas.mpl_connect("motion_notify_event", hover)
+    fig.canvas.mpl_connect("button_release_event", hover)
     TIMINGS['plot_finalization'] = time.perf_counter() - step_start
 
     plt.tight_layout()
