@@ -28,8 +28,8 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
 
-          # jdkPackage = pkgs.jdk8;
-          jdkPackage = pkgs.jdk11;
+          jdkPackage = pkgs.jdk8;
+          # jdkPackage = pkgs.jdk11;
 
           python-pkg = (
             pkgs.python3.withPackages (pp: [
