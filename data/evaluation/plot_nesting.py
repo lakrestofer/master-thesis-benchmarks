@@ -81,17 +81,20 @@ def read_csv_to_dataframe(csv_path: Path):
     return df
 
 
-def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
-    # Track timing for all major steps
-    overall_start = time.perf_counter()
+def process_nesting_data(csv_path: Path):
+    """
+    Process trace data to calculate nesting levels and prepare visualization data.
 
-    # Read CSV with tab delimiter, assuming columns: timestamp, astNodeId, astNodeName, attribute, eventName
-    # Explicitly set aspect as string type to avoid sorting/type issues
+    Returns:
+        tuple: (df, timestamps, nesting_levels, event_types, attributes, aspects,
+                aspect_colors, compute_event_count)
+    """
+    # Read CSV
     df = read_csv_to_dataframe(csv_path)
 
     if df.empty:
         print("No events found in the log file.")
-        return
+        return None
 
     # Count COMPUTE_BEGIN and COMPUTE_END events
     compute_event_count = df[DfTimestamp].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
@@ -128,6 +131,27 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
 
     TIMINGS['aspect_colors'] = time.perf_counter() - step_start
     print(f"Found {len(unique_aspects)} unique aspects (took {TIMINGS['aspect_colors']:.3f}s)")
+
+    return (df, timestamps, nesting_levels, event_types, attributes, aspects,
+            aspect_colors, compute_event_count)
+
+
+def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors):
+    """
+    Create an interactive nesting level plot from processed data.
+
+    Args:
+        timestamps: numpy array of timestamps
+        nesting_levels: numpy array of nesting levels
+        event_types: numpy array of event type names
+        aspects: numpy array of aspect names
+        attributes: numpy array of attribute names
+        aspect_colors: dict mapping aspect names to color hex codes
+
+    Returns:
+        matplotlib.figure.Figure: The created figure
+    """
+    unique_aspects = list(aspect_colors.keys())
 
     # Create the plot with dynamic height based on number of aspects
     print("Creating scatter plot...")
@@ -240,7 +264,43 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
 
     plt.tight_layout()
 
-    TIMINGS['total'] = time.perf_counter() - overall_start
+    return fig
+
+
+def render_figure(fig, rendering_mode: RenderingMode, output_path: Path | None = None):
+    """
+    Render the figure either to a file or to an interactive GUI.
+
+    Args:
+        fig: matplotlib.figure.Figure to render
+        rendering_mode: RenderingMode enum specifying how to render
+        output_path: Optional path for file output (defaults to nesting_levels_plot.png in script dir)
+    """
+    if rendering_mode == RenderingMode.Gui:
+        print("Displaying plot in interactive GUI...")
+        plt.show()
+    elif rendering_mode == RenderingMode.File:
+        if output_path is None:
+            output_path = Path(__file__).parent / "nesting_levels_plot.png"
+        print(f"Saving plot to: {output_path}")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print("Plot saved successfully!")
+    else:
+        print(f"Unknown rendering mode: {rendering_mode}")
+
+
+def print_performance_stats(csv_path: Path, df, nesting_levels, aspect_colors, compute_event_count):
+    """
+    Print detailed performance and data statistics.
+
+    Args:
+        csv_path: Path to the CSV file
+        df: The dataframe with trace data
+        nesting_levels: Numpy array of nesting levels
+        aspect_colors: Dict mapping aspects to colors
+        compute_event_count: Number of COMPUTE_BEGIN/COMPUTE_END events
+    """
+    timestamps = df['timestamp'].values
 
     # Display detailed timing breakdown
     print("\n" + "="*60)
@@ -273,22 +333,42 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
     print(f"Maximum nesting level: {max_level}")
     print(f"Total events processed: {len(df):,}")
     print(f"Computation events (BEGIN/END): {compute_event_count:,}")
-    print(f"Unique aspects: {len(unique_aspects)}")
+    print(f"Unique aspects: {len(aspect_colors)}")
     print(f"Time range: {timestamps[-1]:,} ns ({timestamps[-1] / 1e9:.3f} seconds)")
     print(f"File size: {file_size_mb:.2f} MB")
     print("="*60 + "\n")
 
-    # Render based on the specified mode
-    if rendering_mode == RenderingMode.Gui:
-        print("Displaying plot in interactive GUI...")
-        plt.show()
-    elif rendering_mode == RenderingMode.File:
-        output_path = Path(__file__).parent / "nesting_levels_plot.png"
-        print(f"Saving plot to: {output_path}")
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        print("Plot saved successfully!")
-    else:
-        print(f"Unknown rendering mode: {rendering_mode}")
+
+def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
+    """
+    Main orchestrator function to plot computation nesting levels.
+
+    Args:
+        csv_path: Path to the CSV trace file
+        rendering_mode: How to render the plot (GUI or File)
+    """
+    # Track timing for all major steps
+    overall_start = time.perf_counter()
+
+    # Process the data
+    result = process_nesting_data(csv_path)
+    if result is None:
+        return
+
+    (df, timestamps, nesting_levels, event_types, attributes, aspects,
+     aspect_colors, compute_event_count) = result
+
+    # Create the plot
+    fig = create_nesting_level_plot(timestamps, nesting_levels, event_types,
+                                      aspects, attributes, aspect_colors)
+
+    TIMINGS['total'] = time.perf_counter() - overall_start
+
+    # Print statistics
+    print_performance_stats(csv_path, df, nesting_levels, aspect_colors, compute_event_count)
+
+    # Render the plot
+    render_figure(fig, rendering_mode)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot computation event nesting levels over time')
