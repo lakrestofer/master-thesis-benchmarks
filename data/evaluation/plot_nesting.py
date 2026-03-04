@@ -153,12 +153,17 @@ def plot_computation_nesting(csv_path):
     # ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.5, linewidth=0.5, zorder=1)
     ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', linewidth=0.25, zorder=1)
 
+    mask_compute_begin = event_types_sampled != 'COMPUTE_BEGIN'
+    mask_compute_end = event_types_sampled != 'COMPUTE_END'
+    mask_compute_event = mask_compute_begin * mask_compute_end
     # Plot each aspect with its unique color
     for aspect in unique_aspects:
-        mask = aspects_sampled == aspect
+        # mask = aspects_sampled == aspect
+        mask_aspect = aspects_sampled == aspect
+        mask = mask_aspect * mask_compute_event
         if mask.any():
             ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
-                       c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
+                       c=aspect_colors[aspect], s=2, label=aspect, zorder=2)
     TIMINGS['plotting'] = time.perf_counter() - step_start
     print(f"Plotting complete (took {TIMINGS['plotting']:.3f}s)")
 
