@@ -4,10 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
-import hashlib
 from scipy.spatial import KDTree
 import time
 from enum import Enum
+import colorsys
 
 ############################################################
 # Type definitions
@@ -20,34 +20,52 @@ class RenderingMode(Enum):
     def __str__(self):
         return self.value
 
+DfTimestamp = "timestamp"
+DfEventName = "eventName"
+DfAttribute = "attribute"
+DfAspect = "aspect"
+
 ############################################################
 # Util functions
-#############################################################
+############################################################
 
-def string_to_hex_color(text: str) -> str:
+def generate_distinct_colors(n: int) -> list[str]:
     """
-    Converts a string into a deterministic hex color code.
-    Example: "hello" -> "#5d4140"
+    Generate n visually distinct colors using golden ratio spacing in HSV space.
+    This ensures maximum perceptual difference between colors.
     """
-    if type(text) is not str:
-        return "#000000"
-    # Create SHA-256 hash of the string
-    # TODO we probably do not need a crypographically secure hash here :D
-    hash_bytes = hashlib.sha256(text.encode('utf-8')).digest()
+    colors = []
+    golden_ratio = 0.618033988749895  # Golden ratio conjugate
 
-    # Use first 3 bytes for RGB
-    r, g, b = hash_bytes[0], hash_bytes[1], hash_bytes[2]
+    # Start with a random offset to avoid always starting with the same color
+    hue = 0.0
 
-    return f'#{r:02x}{g:02x}{b:02x}'
+    for i in range(n):
+        # Use golden ratio to space hues maximally apart
+        hue = (hue + golden_ratio) % 1.0
 
-def plot_computation_nesting(csv_path):
-    # Track timing for all major steps
-    timings = {}
-    overall_start = time.perf_counter()
+        # High saturation and value for vibrant, distinguishable colors
+        saturation = 0.8
+        value = 0.9
 
+        # Convert HSV to RGB
+        r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
+
+        # Convert to hex
+        hex_color = f'#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}'
+        colors.append(hex_color)
+
+    return colors
+
+
+############################################################
+# Main compute functions
+############################################################
+TIMINGS = {}
+
+def read_csv_to_dataframe(csv_path: Path):
     # Read the CSV file
     print(f"Reading CSV file: {csv_path}")
-
     # Time the CSV parsing
     step_start = time.perf_counter()
 
@@ -57,25 +75,35 @@ def plot_computation_nesting(csv_path):
                      names=['timestamp', 'aspect', 'astNodeId', 'astNodeName', 'attribute', 'eventName'],
                      dtype={'aspect': str, 'astNodeName': str, 'attribute': str, 'eventName': str})
 
-    timings['csv_parsing'] = time.perf_counter() - step_start
+    TIMINGS['csv_parsing'] = time.perf_counter() - step_start
+    print(f"Loaded {len(df):,} total events from CSV (took {TIMINGS['csv_parsing']:.3f}s)")
 
-    print(f"Loaded {len(df):,} total events from CSV (took {timings['csv_parsing']:.3f}s)")
+    return df
 
-    # Count COMPUTE_BEGIN and COMPUTE_END events
-    compute_event_count = df['eventName'].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
-    print(f"Found {compute_event_count:,} computation events (COMPUTE_BEGIN/COMPUTE_END)")
-    print(f"Processing all {len(df):,} events (keeping nesting level constant for non-compute events)")
+
+def plot_computation_nesting(csv_path):
+    # Track timing for all major steps
+    overall_start = time.perf_counter()
+
+    # Read CSV with tab delimiter, assuming columns: timestamp, astNodeId, astNodeName, attribute, eventName
+    # Explicitly set aspect as string type to avoid sorting/type issues
+    df = read_csv_to_dataframe(csv_path)
 
     if df.empty:
         print("No events found in the log file.")
         return
+
+    # Count COMPUTE_BEGIN and COMPUTE_END events
+    compute_event_count = df[DfTimestamp].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
+    print(f"Found {compute_event_count:,} computation events (COMPUTE_BEGIN/COMPUTE_END)")
+    print(f"Processing all {len(df):,} events (keeping nesting level constant for non-compute events)")
 
     # Track nesting level over time using vectorized operations
     print("Calculating nesting levels (vectorized)...")
     step_start = time.perf_counter()
 
     # Convert to numpy arrays for faster processing
-    timestamps_raw = df['timestamp'].values
+    timestamps = df['timestamp'].values
     event_types = df['eventName'].values
     attributes = df['attribute'].values
     aspects = df['aspect'].values
@@ -87,23 +115,19 @@ def plot_computation_nesting(csv_path):
     # Calculate cumulative nesting levels (level after each event)
     nesting_levels = np.cumsum(deltas)
 
-    # Use raw data directly - one point per event (no duplication)
-    timestamps = timestamps_raw
-
-    timings['nesting_calculation'] = time.perf_counter() - step_start
-    print(f"Finished processing all {len(df):,} events (took {timings['nesting_calculation']:.3f}s)")
-
-    # # Normalize timestamps to start from 0
-    # print("Normalizing timestamps...")
-    # min_t = min(timestamps)
-    # timestamps = [t - min_t for t in timestamps]
+    TIMINGS['nesting_calculation'] = time.perf_counter() - step_start
+    print(f"Finished processing all {len(df):,} events (took {TIMINGS['nesting_calculation']:.3f}s)")
 
     # Get unique aspects and create color mapping
     step_start = time.perf_counter()
     unique_aspects = df['aspect'].unique()
-    aspect_colors = {aspect: string_to_hex_color(aspect) for aspect in unique_aspects}
-    timings['aspect_colors'] = time.perf_counter() - step_start
-    print(f"Found {len(unique_aspects)} unique aspects (took {timings['aspect_colors']:.3f}s)")
+
+    # Generate evenly-spaced distinct colors for all aspects at once
+    distinct_colors = generate_distinct_colors(len(unique_aspects))
+    aspect_colors = {aspect: color for aspect, color in zip(unique_aspects, distinct_colors)}
+
+    TIMINGS['aspect_colors'] = time.perf_counter() - step_start
+    print(f"Found {len(unique_aspects)} unique aspects (took {TIMINGS['aspect_colors']:.3f}s)")
 
     # Create the plot with dynamic height based on number of aspects
     print("Creating scatter plot...")
@@ -122,7 +146,7 @@ def plot_computation_nesting(csv_path):
     event_types_sampled = event_types[::downsample_factor]
     aspects_sampled = aspects[::downsample_factor]
     attributes_sampled = attributes[::downsample_factor]
-    timings['plot_setup'] = time.perf_counter() - step_start
+    TIMINGS['plot_setup'] = time.perf_counter() - step_start
 
     # Plot the line connecting all points
     step_start = time.perf_counter()
@@ -135,8 +159,8 @@ def plot_computation_nesting(csv_path):
         if mask.any():
             ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
                        c=aspect_colors[aspect], alpha=0.7, s=2, label=aspect, zorder=2)
-    timings['plotting'] = time.perf_counter() - step_start
-    print(f"Plotting complete (took {timings['plotting']:.3f}s)")
+    TIMINGS['plotting'] = time.perf_counter() - step_start
+    print(f"Plotting complete (took {TIMINGS['plotting']:.3f}s)")
 
     # Build KD-tree for fast hover lookup
     step_start = time.perf_counter()
@@ -150,9 +174,9 @@ def plot_computation_nesting(csv_path):
         (nesting_levels_plot - nesting_levels_plot.min()) / level_range
     ])
     kdtree = KDTree(points_normalized)
-    timings['kdtree_build'] = time.perf_counter() - step_start
+    TIMINGS['kdtree_build'] = time.perf_counter() - step_start
 
-    print(f"Built KD-tree with {len(points_normalized):,} points for fast hover lookup (took {timings['kdtree_build']:.3f}s)")
+    print(f"Built KD-tree with {len(points_normalized):,} points for fast hover lookup (took {TIMINGS['kdtree_build']:.3f}s)")
 
     step_start = time.perf_counter()
     ax.set_xlabel("Time (nanoseconds from start)", fontsize=12)
@@ -204,33 +228,33 @@ def plot_computation_nesting(csv_path):
             fig.canvas.draw_idle()
 
     fig.canvas.mpl_connect("motion_notify_event", hover)
-    timings['plot_finalization'] = time.perf_counter() - step_start
+    TIMINGS['plot_finalization'] = time.perf_counter() - step_start
 
     plt.tight_layout()
 
-    timings['total'] = time.perf_counter() - overall_start
+    TIMINGS['total'] = time.perf_counter() - overall_start
 
     # Display detailed timing breakdown
     print("\n" + "="*60)
     print("PERFORMANCE TIMING BREAKDOWN:")
     print("="*60)
     file_size_mb = csv_path.stat().st_size / (1024*1024)
-    print(f"CSV Parsing:          {timings['csv_parsing']:>8.3f}s  ({file_size_mb/timings['csv_parsing']:>6.1f} MB/s)")
-    print(f"Nesting Calculation:  {timings['nesting_calculation']:>8.3f}s  ({len(df)/timings['nesting_calculation']:>6.0f} events/s)")
-    print(f"Aspect Colors:        {timings['aspect_colors']:>8.3f}s")
-    print(f"Plot Setup:           {timings['plot_setup']:>8.3f}s")
-    print(f"Plotting:             {timings['plotting']:>8.3f}s")
-    print(f"KD-tree Build:        {timings['kdtree_build']:>8.3f}s")
-    print(f"Plot Finalization:    {timings['plot_finalization']:>8.3f}s")
+    print(f"CSV Parsing:          {TIMINGS['csv_parsing']:>8.3f}s  ({file_size_mb/TIMINGS['csv_parsing']:>6.1f} MB/s)")
+    print(f"Nesting Calculation:  {TIMINGS['nesting_calculation']:>8.3f}s  ({len(df)/TIMINGS['nesting_calculation']:>6.0f} events/s)")
+    print(f"Aspect Colors:        {TIMINGS['aspect_colors']:>8.3f}s")
+    print(f"Plot Setup:           {TIMINGS['plot_setup']:>8.3f}s")
+    print(f"Plotting:             {TIMINGS['plotting']:>8.3f}s")
+    print(f"KD-tree Build:        {TIMINGS['kdtree_build']:>8.3f}s")
+    print(f"Plot Finalization:    {TIMINGS['plot_finalization']:>8.3f}s")
     print("-" * 60)
-    print(f"TOTAL TIME:           {timings['total']:>8.3f}s")
+    print(f"TOTAL TIME:           {TIMINGS['total']:>8.3f}s")
     print("="*60)
 
     # Calculate percentages
     print("\nTime Distribution:")
-    for step, duration in sorted(timings.items(), key=lambda x: x[1], reverse=True):
+    for step, duration in sorted(TIMINGS.items(), key=lambda x: x[1], reverse=True):
         if step != 'total':
-            percentage = (duration / timings['total']) * 100
+            percentage = (duration / TIMINGS['total']) * 100
             print(f"  {step:.<25} {percentage:>5.1f}%")
     print("="*60 + "\n")
 
@@ -246,14 +270,14 @@ def plot_computation_nesting(csv_path):
     print(f"File size: {file_size_mb:.2f} MB")
     print("="*60 + "\n")
 
+    # output_path = Path(__file__).parent / "nesting_levels_plot.png"
+    # print(f"Saving plot to: {output_path}")
+    # plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    # print("Plot saved successfully!")
+
     # Save plot to file
     plt.show()
     plt.tight_layout()
-
-    output_path = Path(__file__).parent / "nesting_levels_plot.png"
-    print(f"Saving plot to: {output_path}")
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    # print("Plot saved successfully!")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot computation event nesting levels over time')
