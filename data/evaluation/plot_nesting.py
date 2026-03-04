@@ -2,12 +2,14 @@ from sys import exit
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.widgets import CheckButtons
 from pathlib import Path
 import argparse
 from scipy.spatial import KDTree
 import time
 from enum import Enum
 import colorsys
+from tqdm import tqdm
 
 ############################################################
 # Type definitions
@@ -87,7 +89,7 @@ def process_nesting_data(csv_path: Path):
 
     Returns:
         tuple: (df, timestamps, nesting_levels, event_types, attributes, aspects,
-                aspect_colors, compute_event_count)
+                aspect_colors, compute_event_count, unique_event_types)
     """
     # Read CSV
     df = read_csv_to_dataframe(csv_path)
@@ -132,11 +134,18 @@ def process_nesting_data(csv_path: Path):
     TIMINGS['aspect_colors'] = time.perf_counter() - step_start
     print(f"Found {len(unique_aspects)} unique aspects (took {TIMINGS['aspect_colors']:.3f}s)")
 
+    # Collect unique event types (excluding COMPUTE_BEGIN/COMPUTE_END)
+    unique_event_types = df['eventName'].unique()
+    # Filter out compute events from the list (they won't be plotted anyway)
+    unique_event_types = [et for et in unique_event_types
+                          if not et.startswith('COMPUTE_')]
+    print(f"Found {len(unique_event_types)} unique event types (excluding COMPUTE_*)")
+
     return (df, timestamps, nesting_levels, event_types, attributes, aspects,
-            aspect_colors, compute_event_count)
+            aspect_colors, compute_event_count, unique_event_types)
 
 
-def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors):
+def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors, unique_event_types):
     """
     Create an interactive nesting level plot from processed data.
 
@@ -147,6 +156,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
         aspects: numpy array of aspect names
         attributes: numpy array of attribute names
         aspect_colors: dict mapping aspect names to color hex codes
+        unique_event_types: list of unique event type names (excluding COMPUTE_*)
 
     Returns:
         matplotlib.figure.Figure: The created figure
@@ -158,7 +168,15 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
     step_start = time.perf_counter()
     # Calculate figure height to accommodate legend (minimum 8, scale with aspects, max 20)
     fig_height = max(8, min(20, 8 + len(unique_aspects) * 0.15))
-    fig, ax = plt.subplots(figsize=(18, fig_height))
+
+    # Create figure with space for checkboxes on the right
+    fig = plt.figure(figsize=(20, fig_height))
+
+    # Use GridSpec for layout: main plot on left, controls on right
+    gs = fig.add_gridspec(1, 2, width_ratios=[4, 1], wspace=0.3)
+    ax = fig.add_subplot(gs[0])
+    ax_checks = fig.add_subplot(gs[1])
+    ax_checks.axis('off')  # Hide axes for checkbox area
 
     # Downsample for faster rendering (plot every Nth point)
     # downsample_factor = max(1, len(timestamps) // 1000000)  # Target ~100k points
@@ -174,22 +192,63 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
 
     # Plot the line connecting all points
     step_start = time.perf_counter()
-    # ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', alpha=0.5, linewidth=0.5, zorder=1)
     ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', linewidth=0.25, zorder=1)
 
-    mask_compute_begin = event_types_sampled != 'COMPUTE_BEGIN'
-    mask_compute_end = event_types_sampled != 'COMPUTE_END'
-    mask_compute_event = mask_compute_begin * mask_compute_end
-    # Plot each aspect with its unique color
-    for aspect in unique_aspects:
-        # mask = aspects_sampled == aspect
-        mask_aspect = aspects_sampled == aspect
-        mask = mask_aspect * mask_compute_event
-        if mask.any():
-            ax.scatter(timestamps_plot[mask], nesting_levels_plot[mask],
-                       c=aspect_colors[aspect], s=2, label=aspect, zorder=2)
+    # Store scatter collections by event type for toggling
+    scatter_collections = {}
+
+    # Create mask for compute events (still exclude these)
+    mask_compute = np.isin(event_types_sampled, ['COMPUTE_BEGIN', 'COMPUTE_END'])
+
+    # Plot each event type, organized by aspect
+    for event_type in tqdm(unique_event_types):
+        event_mask = event_types_sampled == event_type
+        combined_mask = event_mask & ~mask_compute
+
+        if combined_mask.any():
+            # For this event type, plot each aspect with its color
+            for aspect in unique_aspects:
+                aspect_mask = aspects_sampled == aspect
+                final_mask = combined_mask & aspect_mask
+
+                if final_mask.any():
+                    scatter = ax.scatter(
+                        timestamps_plot[final_mask],
+                        nesting_levels_plot[final_mask],
+                        c=aspect_colors[aspect],
+                        s=2,
+                        label=f"{aspect}:{event_type}",
+                        zorder=2
+                    )
+                    # Store in dict for toggling
+                    if event_type not in scatter_collections:
+                        scatter_collections[event_type] = []
+                    scatter_collections[event_type].append(scatter)
+
     TIMINGS['plotting'] = time.perf_counter() - step_start
     print(f"Plotting complete (took {TIMINGS['plotting']:.3f}s)")
+
+    # Create CheckButtons widget for event type filtering
+    check_labels = list(unique_event_types)
+    check_initial_state = [True] * len(check_labels)
+
+    # Position checkboxes in the right subplot area
+    # Calculate position based on number of event types for better layout
+    checkbox_height = min(0.6, 0.05 * len(check_labels))
+    checkbox_top = 0.5 + checkbox_height / 2
+    rax = plt.axes((0.82, checkbox_top - checkbox_height, 0.15, checkbox_height))
+    check = CheckButtons(rax, check_labels, check_initial_state)
+
+    # Callback to toggle event type visibility
+    def toggle_event_type(label):
+        # Find which event type was toggled
+        if label in scatter_collections:
+            for scatter in scatter_collections[label]:
+                scatter.set_visible(not scatter.get_visible())
+        fig.canvas.draw_idle()
+
+    check.on_clicked(toggle_event_type)
+    print(f"Created checkboxes for {len(unique_event_types)} event types")
 
     # Build KD-tree for fast hover lookup
     step_start = time.perf_counter()
@@ -356,11 +415,12 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
         return
 
     (df, timestamps, nesting_levels, event_types, attributes, aspects,
-     aspect_colors, compute_event_count) = result
+     aspect_colors, compute_event_count, unique_event_types) = result
 
     # Create the plot
     fig = create_nesting_level_plot(timestamps, nesting_levels, event_types,
-                                      aspects, attributes, aspect_colors)
+                                      aspects, attributes, aspect_colors,
+                                      unique_event_types)
 
     TIMINGS['total'] = time.perf_counter() - overall_start
 
