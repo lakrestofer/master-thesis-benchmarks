@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import CheckButtons
+from matplotlib.widgets import Button
 from pathlib import Path
 import argparse
 from scipy.spatial import KDTree
@@ -181,7 +182,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
         spine.set_visible(False)
 
     # Downsample for faster rendering (plot every Nth point)
-    downsample_factor = max(1, len(timestamps) // 100000)  # Target ~100k points
+    downsample_factor = max(1, len(timestamps) // 10000)  # Target ~100k points
     # downsample_factor = 1
     print(f"Downsampling by factor of {downsample_factor} for visualization")
 
@@ -237,6 +238,28 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
     # Use the ax_checks subplot we already created for the checkboxes
     check = CheckButtons(ax_checks, check_labels, check_initial_state)
 
+    # Create a separate axes for the toggle all button (positioned above checkboxes)
+    button_ax = plt.axes((0.75, 0.05, 0.15, 0.05))
+    toggle_button = Button(button_ax, "Toggle All")
+
+    def toggle_all(event):
+        print("Toggle All button clicked")
+        # Get current states of all checkboxes
+        current_states = check.get_status()
+
+        # If all are True, set all to False; otherwise set all to True
+        all_enabled = all(current_states)
+        new_state = not all_enabled
+
+        # Toggle each checkbox programmatically
+        for i, label in enumerate(check_labels):
+            if current_states[i] != new_state:
+                check.set_active(i)  # This will trigger the toggle_event_type callback
+
+        print(f"Set all checkboxes to: {new_state}")
+
+    toggle_button.on_clicked(toggle_all)
+
     # Callback to toggle event type visibility
     def toggle_event_type(label):
         print(f"check clicked: {label}")
@@ -248,8 +271,9 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
 
     check.on_clicked(toggle_event_type)
 
-    # Store the widget as a figure attribute to prevent garbage collection
+    # Store the widgets as figure attributes to prevent garbage collection
     fig._check_buttons = check  # type: ignore
+    fig._toggle_button = toggle_button  # type: ignore
 
     print(f"Created checkboxes for {len(unique_event_types)} event types")
 
