@@ -81,7 +81,7 @@ def read_csv_to_dataframe(csv_path: Path):
     return df
 
 
-def plot_computation_nesting(csv_path):
+def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
     # Track timing for all major steps
     overall_start = time.perf_counter()
 
@@ -275,14 +275,17 @@ def plot_computation_nesting(csv_path):
     print(f"File size: {file_size_mb:.2f} MB")
     print("="*60 + "\n")
 
-    # output_path = Path(__file__).parent / "nesting_levels_plot.png"
-    # print(f"Saving plot to: {output_path}")
-    # plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    # print("Plot saved successfully!")
-
-    # Save plot to file
-    plt.show()
-    plt.tight_layout()
+    # Render based on the specified mode
+    if rendering_mode == RenderingMode.Gui:
+        print("Displaying plot in interactive GUI...")
+        plt.show()
+    elif rendering_mode == RenderingMode.File:
+        output_path = Path(__file__).parent / "nesting_levels_plot.png"
+        print(f"Saving plot to: {output_path}")
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print("Plot saved successfully!")
+    else:
+        print(f"Unknown rendering mode: {rendering_mode}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Plot computation event nesting levels over time')
@@ -292,7 +295,7 @@ if __name__ == "__main__":
         help='Path to the CSV log file (default: log.csv in script directory)',
     )
     parser.add_argument(
-        '--render_output',
+        '--rendering_mode',
         default=RenderingMode.Gui,
         type=RenderingMode,
         choices=list(RenderingMode),
@@ -301,9 +304,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     csv_path = Path(args.csv_file)
-    rendering_mode = args.render_output
-
+    rendering_mode = args.rendering_mode
     print(f"reading file {csv_path}")
     print(f"rendering mode {rendering_mode}")
 
-    plot_computation_nesting(csv_path)
+    plot_computation_nesting(csv_path, rendering_mode)
