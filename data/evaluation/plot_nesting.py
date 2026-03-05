@@ -137,7 +137,7 @@ def process_nesting_data(df):
             aspect_colors, compute_event_count, unique_event_types)
 
 
-def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors, unique_event_types, downsample_to: int = 10000):
+def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors, unique_event_types, downsample_to: int = 10000, csv_start: int = 0):
     """
     Create an interactive nesting level plot from processed data.
 
@@ -292,7 +292,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
     step_start = time.perf_counter()
     ax.set_xlabel("Time (nanoseconds from start)", fontsize=12)
     ax.set_ylabel("Nesting Level", fontsize=12)
-    ax.set_title("Computation Event Nesting Levels Over Time (Downsampled)", fontsize=14, fontweight='bold')
+    ax.set_title("Computation Event Nesting Levels Over Time" + (" (Downsampled)" if downsample_to > 0 else ""), fontsize=14, fontweight='bold')
 
     # Place legend outside plot area with multiple columns and smaller font
     # Calculate number of columns based on number of aspects (max 3 columns)
@@ -331,7 +331,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
                 attribute = attributes_sampled[idx]
 
                 annot.xy = (x_val, y_val)
-                annot.set_text(f"Aspect: {aspect}\nAttribute: {attribute}\nEvent: {event}\nEvent no.: {idx*downsample_factor}")
+                annot.set_text(f"Aspect: {aspect}\nAttribute: {attribute}\nEvent: {event}\nEvent no.: {csv_start+idx*downsample_factor}")
                 annot.set_visible(True)
                 fig.canvas.draw_idle()
             elif annot.get_visible():
@@ -422,7 +422,7 @@ def print_performance_stats(csv_path: Path, df, nesting_levels, aspect_colors, c
     print("="*60 + "\n")
 
 
-def plot_computation_nesting(df: DataFrame, csv_path: Path, rendering_mode: RenderingMode, downsample_to: int):
+def plot_computation_nesting(df: DataFrame, csv_path: Path, rendering_mode: RenderingMode, downsample_to: int, csv_start: int):
     """
     Main orchestrator function to plot computation nesting levels.
 
@@ -444,7 +444,7 @@ def plot_computation_nesting(df: DataFrame, csv_path: Path, rendering_mode: Rend
     # Create the plot
     fig = create_nesting_level_plot(timestamps, nesting_levels, event_types,
                                       aspects, attributes, aspect_colors,
-                                      unique_event_types, downsample_to=downsample_to)
+                                      unique_event_types, downsample_to=downsample_to, csv_start=csv_start)
 
     TIMINGS['total'] = time.perf_counter() - overall_start
 
@@ -504,7 +504,7 @@ def main():
         print("No events found in the log file.")
         return None
 
-    plot_computation_nesting(df, csv_path, rendering_mode, downsample_to)
+    plot_computation_nesting(df, csv_path, rendering_mode, downsample_to, csv_start)
 
 
 if __name__ == "__main__":
