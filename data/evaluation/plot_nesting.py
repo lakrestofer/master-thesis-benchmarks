@@ -1,3 +1,4 @@
+from pandas import DataFrame
 from sys import exit
 import pandas as pd
 import numpy as np
@@ -84,7 +85,7 @@ def read_csv_to_dataframe(csv_path: Path):
     return df
 
 
-def process_nesting_data(csv_path: Path):
+def process_nesting_data(df):
     """
     Process trace data to calculate nesting levels and prepare visualization data.
 
@@ -92,13 +93,6 @@ def process_nesting_data(csv_path: Path):
         tuple: (df, timestamps, nesting_levels, event_types, attributes, aspects,
                 aspect_colors, compute_event_count, unique_event_types)
     """
-    # Read CSV
-    df = read_csv_to_dataframe(csv_path)
-
-    if df.empty:
-        print("No events found in the log file.")
-        return None
-
     # Count COMPUTE_BEGIN and COMPUTE_END events
     compute_event_count = df[DfTimestamp].isin(['COMPUTE_BEGIN', 'COMPUTE_END']).sum()
     print(f"Found {compute_event_count:,} computation events (COMPUTE_BEGIN/COMPUTE_END)")
@@ -143,7 +137,7 @@ def process_nesting_data(csv_path: Path):
             aspect_colors, compute_event_count, unique_event_types)
 
 
-def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors, unique_event_types):
+def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, attributes, aspect_colors, unique_event_types, downsample_by: int = 10000):
     """
     Create an interactive nesting level plot from processed data.
 
@@ -182,7 +176,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
         spine.set_visible(False)
 
     # Downsample for faster rendering (plot every Nth point)
-    downsample_factor = max(1, len(timestamps) // 10000)  # Target ~100k points
+    downsample_factor = max(1, len(timestamps) // downsample_by)  # Target ~100k points
     # downsample_factor = 1
     print(f"Downsampling by factor of {downsample_factor} for visualization")
 
@@ -195,7 +189,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
 
     # Plot the line connecting all points
     step_start = time.perf_counter()
-    ax.plot(timestamps_plot, nesting_levels_plot, color='lightgray', linewidth=0.25, zorder=1)
+    ax.plot(timestamps, nesting_levels, color='lightgray', linewidth=0.25, zorder=1)
 
     # Store scatter collections by event type for toggling
     scatter_collections = {}
@@ -426,7 +420,7 @@ def print_performance_stats(csv_path: Path, df, nesting_levels, aspect_colors, c
     print("="*60 + "\n")
 
 
-def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
+def plot_computation_nesting(df: DataFrame, csv_path: Path, rendering_mode: RenderingMode, downsample_by: int):
     """
     Main orchestrator function to plot computation nesting levels.
 
@@ -438,7 +432,7 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
     overall_start = time.perf_counter()
 
     # Process the data
-    result = process_nesting_data(csv_path)
+    result = process_nesting_data(df)
     if result is None:
         return
 
@@ -448,7 +442,7 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
     # Create the plot
     fig = create_nesting_level_plot(timestamps, nesting_levels, event_types,
                                       aspects, attributes, aspect_colors,
-                                      unique_event_types)
+                                      unique_event_types, downsample_by=downsample_by)
 
     TIMINGS['total'] = time.perf_counter() - overall_start
 
@@ -458,7 +452,7 @@ def plot_computation_nesting(csv_path: Path, rendering_mode: RenderingMode):
     # Render the plot
     render_figure(fig, rendering_mode)
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description='Plot computation event nesting levels over time')
     parser.add_argument(
         'csv_file',
@@ -472,11 +466,27 @@ if __name__ == "__main__":
         choices=list(RenderingMode),
         help='How this script should render the graphs, to a file, or to an interactive gui',
     )
+    parser.add_argument(
+        '--downsample_by',
+        default=10000,
+        type=int,
+        choices=list(RenderingMode),
+        help='How this script should render the graphs, to a file, or to an interactive gui',
+    )
     args = parser.parse_args()
 
     csv_path = Path(args.csv_file)
     rendering_mode = args.rendering_mode
-    print(f"reading file {csv_path}")
-    print(f"rendering mode {rendering_mode}")
+    downsample_by = args.downsampling_factor
 
-    plot_computation_nesting(csv_path, rendering_mode)
+    df = read_csv_to_dataframe(csv_path)
+
+    if df.empty:
+        print("No events found in the log file.")
+        return None
+
+    plot_computation_nesting(df, csv_path, rendering_mode, downsample_by)
+
+
+if __name__ == "__main__":
+    main()
