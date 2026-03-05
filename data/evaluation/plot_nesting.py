@@ -470,7 +470,6 @@ def main():
         '--downsample_by',
         default=10000,
         type=int,
-        choices=list(RenderingMode),
         help='How this script should render the graphs, to a file, or to an interactive gui',
     )
     args = parser.parse_args()
