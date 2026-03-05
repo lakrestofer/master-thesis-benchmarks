@@ -67,7 +67,7 @@ def generate_distinct_colors(n: int) -> list[str]:
 ############################################################
 TIMINGS = {}
 
-def read_csv_to_dataframe(csv_path: Path):
+def read_csv_to_dataframe(csv_path: Path, start, end):
     # Read the CSV file
     print(f"Reading CSV file: {csv_path}")
     # Time the CSV parsing
@@ -75,7 +75,7 @@ def read_csv_to_dataframe(csv_path: Path):
 
     # Read CSV with tab delimiter, assuming columns: timestamp, astNodeId, astNodeName, attribute, eventName
     # Explicitly set aspect as string type to avoid sorting/type issues
-    df = pd.read_csv(csv_path, sep='\t', header=None,
+    df = pd.read_csv(csv_path, sep='\t', header=None, skiprows=start, nrows=end-start if end >= start else None,
                      names=['timestamp', 'aspect', 'astNodeId', 'astNodeName', 'attribute', 'eventName'],
                      dtype={'aspect': str, 'astNodeName': str, 'attribute': str, 'eventName': str})
 
@@ -317,8 +317,8 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
             # Find nearest point using KD-tree (very fast!)
             distance, idx = kdtree.query([mouse_x_norm, mouse_y_norm])
 
-            if event_types_sampled[idx].startswith('COMPUTE_'):
-                return
+            # if event_types_sampled[idx].startswith('COMPUTE_'):
+            #     return
 
             # Only show tooltip if mouse is close enough (threshold in normalized space)
             # Adjust threshold based on plot size - smaller threshold = need to be closer
@@ -331,7 +331,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
                 attribute = attributes_sampled[idx]
 
                 annot.xy = (x_val, y_val)
-                annot.set_text(f"Aspect: {aspect}\nAttribute: {attribute}\nEvent: {event}")
+                annot.set_text(f"Aspect: {aspect}\nAttribute: {attribute}\nEvent: {event}\nEvent no.: {idx*downsample_factor}")
                 annot.set_visible(True)
                 fig.canvas.draw_idle()
             elif annot.get_visible():
@@ -341,7 +341,7 @@ def create_nesting_level_plot(timestamps, nesting_levels, event_types, aspects, 
             annot.set_visible(False)
             fig.canvas.draw_idle()
 
-    # fig.canvas.mpl_connect("button_release_event", hover)
+    fig.canvas.mpl_connect("button_release_event", hover)
     TIMINGS['plot_finalization'] = time.perf_counter() - step_start
 
     # Use tight_layout but let the gridspec handle the checkbox area
@@ -472,19 +472,33 @@ def main():
         '--downsample_to',
         default=10000,
         type=int,
-        help='How this script should render the graphs, to a file, or to an interactive gui',
+        help='Target sample points. Use non-positive values to run without downsampling',
+    )
+    parser.add_argument(
+        '--start',
+        default=0,
+        type=int,
+        help='First event to read from csv'
+    )
+    parser.add_argument(
+        '--end',
+        default=-1,
+        type=int,
+        help='Last event to read from csv. Use negative values for last value in the csv'
     )
     args = parser.parse_args()
 
     csv_path = Path(args.csv_file)
     rendering_mode = args.rendering_mode
     downsample_to = args.downsample_to
+    csv_start = args.start
+    csv_end = args.end
 
     print(f"csv_path: {csv_path }")
     print(f"rendering_mode: {rendering_mode }")
     print(f"downsample_to: {downsample_to }")
 
-    df = read_csv_to_dataframe(csv_path)
+    df = read_csv_to_dataframe(csv_path, csv_start, csv_end)
 
     if df.empty:
         print("No events found in the log file.")
