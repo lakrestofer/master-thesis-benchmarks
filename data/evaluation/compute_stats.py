@@ -237,7 +237,7 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
         logger.warning("No write events found - skipping cache metrics")
         for col in ['cache_writes', 'cache_reads',
                     'num_unique_block_types', 'min_block_size', 'max_block_size',
-                    'median_block_size', 'mean_block_size', 'total_blocks']:
+                    'first_quartile_block_size', 'median_block_size', 'third_quartile_block_size', 'mean_block_size', 'total_blocks']:
             attributes_df[col] = np.nan
         return
 
@@ -257,7 +257,9 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
         ('num_unique_block_types', lambda x: x.nunique()),
         ('min_block_size', 'min'),
         ('max_block_size', 'max'),
+        ('first_quartile_block_size', lambda x: x.quantile(0.25)),
         ('median_block_size', 'median'),
+        ('third_quartile_block_size', lambda x: x.quantile(0.75)),
         ('mean_block_size', 'mean')
     ]).reset_index()
 
@@ -288,7 +290,7 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
 
     # Vectorized merge into attributes_df (same pattern as performance metrics)
     merge_cols = ['cache_writes', 'cache_reads',  'num_unique_block_types',
-                  'min_block_size', 'max_block_size', 'median_block_size', 'mean_block_size', 'total_blocks']
+                  'min_block_size', 'max_block_size','first_quartile_block_size', 'median_block_size', 'third_quartile_block_size', 'mean_block_size', 'total_blocks']
 
     temp_df = attributes_df.merge(
         stats[[DfAspect, DfAttribute] + merge_cols],
