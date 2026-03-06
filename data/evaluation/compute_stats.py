@@ -70,12 +70,11 @@ def create_attributes_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return attributes_df
 
 
-def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None:
+def compute_compute_event_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None:
     """
     Add performance metric columns to attributes_df (modifies in-place).
 
     Columns added:
-    - call_count: Number of times this attribute was computed across all nodes
     - mean_time: Mean computation time (μs)
     - median_time: Median computation time (μs)
     - p95_time: 95th percentile (μs)
@@ -97,7 +96,7 @@ def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -
     if compute_events.empty:
         logger.warning("No compute events found - skipping performance metrics")
         # Add empty columns
-        for col in ['call_count', 'mean_time', 'median_time', 'p95_time', 'p99_time',
+        for col in ['mean_time', 'median_time', 'p95_time', 'p99_time',
                     'total_time', 'min_time', 'max_time']:
             attributes_df[col] = np.nan
         return
@@ -113,7 +112,7 @@ def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -
 
     if begins.empty or ends.empty:
         logger.warning("Missing BEGIN or END events - skipping performance metrics")
-        for col in ['call_count', 'mean_time', 'median_time', 'p95_time', 'p99_time',
+        for col in ['mean_time', 'median_time', 'p95_time', 'p99_time',
                     'total_time', 'min_time', 'max_time']:
             attributes_df[col] = np.nan
         return
@@ -127,7 +126,7 @@ def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -
 
     if paired.empty:
         logger.warning("Could not pair BEGIN/END events - skipping performance metrics")
-        for col in ['call_count', 'mean_time', 'median_time', 'p95_time', 'p99_time',
+        for col in ['mean_time', 'median_time', 'p95_time', 'p99_time',
                     'total_time', 'min_time', 'max_time']:
             attributes_df[col] = np.nan
         return
@@ -137,7 +136,6 @@ def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -
 
     # Vectorized aggregation per (aspect, attribute) using built-in pandas functions
     stats = paired.groupby([DfAspect + '_begin', DfAttribute + '_begin'])['duration'].agg([
-        ('call_count', 'count'),
         ('mean_time', 'mean'),
         ('median_time', 'median'),
         ('p95_time', lambda x: x.quantile(0.95)),
@@ -155,7 +153,7 @@ def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -
     stats.rename(columns={DfAspect + '_begin': DfAspect, DfAttribute + '_begin': DfAttribute}, inplace=True)
 
     # Vectorized merge into attributes_df
-    merge_cols = [DfAspect, DfAttribute, 'call_count', 'mean_time', 'median_time', 'p95_time',
+    merge_cols = [DfAspect, DfAttribute, 'mean_time', 'median_time', 'p95_time',
                   'p99_time', 'total_time', 'min_time', 'max_time']
 
     temp_df = attributes_df.merge(
@@ -165,13 +163,12 @@ def compute_performance_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -
     )
 
     # Copy columns back to attributes_df (in-place modification)
-    for col in ['call_count', 'mean_time', 'median_time', 'p95_time', 'p99_time',
+    for col in ['mean_time', 'median_time', 'p95_time', 'p99_time',
                 'total_time', 'min_time', 'max_time']:
         attributes_df[col] = temp_df[col]
 
     elapsed = time.perf_counter() - step_start
     logger.info(f"Performance metrics computed in {elapsed:.3f}s")
-
 
 def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None:
     """
@@ -183,7 +180,6 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
     Columns added:
     - cache_writes (N_CACHE_WRITES): Total number of CACHE_WRITE events
     - cache_reads (N_CACHE_READS): Total number of CACHE_READ events
-    - reads_per_write_ratio: N_CACHE_READS / N_CACHE_WRITES
     - num_unique_block_types: Number of different block sizes observed
     - min_block_size: Minimum block size (fewest reads in any block)
     - max_block_size: Maximum block size (most reads in any block)
@@ -204,7 +200,7 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
     if cache_events.empty:
         logger.warning("No cache events found - skipping cache metrics")
         # Add empty columns
-        for col in ['cache_writes', 'cache_reads', 'reads_per_write_ratio',
+        for col in ['cache_writes', 'cache_reads',
                     'num_unique_block_types', 'min_block_size', 'max_block_size',
                     'median_block_size', 'mean_block_size', 'total_blocks']:
             attributes_df[col] = np.nan
@@ -239,7 +235,7 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
 
     if all_blocks_nodes.empty:
         logger.warning("No write events found - skipping cache metrics")
-        for col in ['cache_writes', 'cache_reads', 'reads_per_write_ratio',
+        for col in ['cache_writes', 'cache_reads',
                     'num_unique_block_types', 'min_block_size', 'max_block_size',
                     'median_block_size', 'mean_block_size', 'total_blocks']:
             attributes_df[col] = np.nan
@@ -283,13 +279,6 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
     stats['cache_reads'] = stats['cache_reads'].fillna(0).astype(int)
     stats['cache_writes'] = stats['cache_writes'].fillna(0).astype(int)
 
-    # Calculate ratio (vectorized, handling division by zero)
-    stats['reads_per_write_ratio'] = np.where(
-        stats['cache_writes'] > 0,
-        stats['cache_reads'] / stats['cache_writes'],
-        0.0
-    )
-
     logger.debug(f"Merging cache stats into {len(attributes_df)} attributes")
     logger.debug(f"Stats dataframe has {len(stats)} rows")
 
@@ -298,7 +287,7 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
         logger.debug(f"Sample stats row: {stats.iloc[0].to_dict()}")
 
     # Vectorized merge into attributes_df (same pattern as performance metrics)
-    merge_cols = ['cache_writes', 'cache_reads', 'reads_per_write_ratio', 'num_unique_block_types',
+    merge_cols = ['cache_writes', 'cache_reads',  'num_unique_block_types',
                   'min_block_size', 'max_block_size', 'median_block_size', 'mean_block_size', 'total_blocks']
 
     temp_df = attributes_df.merge(
@@ -358,10 +347,14 @@ def compute_event_counts_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) 
         how='left'
     )
 
+
     # Copy event count columns back to attributes_df (in-place modification)
     # Fill NaN with 0 for attributes that don't have certain event types
     for col in event_type_cols:
         attributes_df[col] = temp_df[col].fillna(0).astype(int)
+
+    # out of the event counts we compute the ratio of the reads over all the "attribute calls" (cache reads + compute begins)
+    attributes_df["CACHE_READ_CALL_RATIO"] = attributes_df["CACHE_READ"] / (attributes_df["COMPUTE_BEGIN"] + attributes_df["CACHE_READ"])
 
     elapsed = time.perf_counter() - step_start
     logger.info(f"Event type counts computed in {elapsed:.3f}s")
@@ -397,7 +390,7 @@ def compute_metrics(df: pd.DataFrame, compute_performance: bool = True,
 
     # Each metric function adds columns to attributes_df
     if compute_performance:
-        compute_performance_metrics(df, attributes_df)
+        compute_compute_event_metrics(df, attributes_df)
 
     if compute_cache:
         compute_cache_metrics(df, attributes_df)
@@ -488,7 +481,7 @@ def display_attribute_table(attributes_df: pd.DataFrame, sort_by: str, title: st
     # Round float columns for better display
     float_cols = display_df.select_dtypes(include=['float64']).columns
     for col in float_cols:
-        display_df[col] = display_df[col].round(2)
+        display_df[col] = display_df[col].round(4)
 
     # Print the table
     print("\n" + "=" * 80)
@@ -534,16 +527,6 @@ def present_results(metrics: Dict[str, Any], csv_path: Path) -> None:
 
     # Display per-attribute metrics sorted by different criteria
 
-    # 1. Sort by call count (performance - most frequently computed attributes)
-    if 'call_count' in attributes_df.columns:
-        display_attribute_table(
-            attributes_df,
-            sort_by='call_count',
-            title='PER-ATTRIBUTE METRICS: Top by Computation Frequency',
-            top_n=20,
-            ascending=False
-        )
-
     # 2. Sort by total time (performance - attributes consuming most time)
     if 'total_time' in attributes_df.columns:
         display_attribute_table(
@@ -555,26 +538,36 @@ def present_results(metrics: Dict[str, Any], csv_path: Path) -> None:
         )
 
     # 3. Sort by cache reads per write ratio (cache efficiency)
-    if 'reads_per_write_ratio' in attributes_df.columns:
+    if 'mean_block_size' in attributes_df.columns:
         display_attribute_table(
             attributes_df,
-            sort_by='reads_per_write_ratio',
+            sort_by='mean_block_size',
             title='PER-ATTRIBUTE METRICS: Top by Cache Read/Write Ratio (Cache Efficiency)',
             top_n=20,
-            ascending=False,
+            ascending=True,
             filter_func=lambda df: df[df['cache_writes'].notna()]
         )
 
-    # 4. Sort by FLUSH_ATTR count (attributes that get flushed most often)
-    if 'FLUSH_ATTR' in attributes_df.columns:
+    if 'mean_block_size' in attributes_df.columns:
         display_attribute_table(
             attributes_df,
-            sort_by='FLUSH_ATTR',
-            title='PER-ATTRIBUTE METRICS: Top by Cache Flush Count',
+            sort_by='mean_block_size',
+            title='PER-ATTRIBUTE METRICS: Top by Cache Read/Write Ratio (Cache Efficiency)',
             top_n=20,
-            ascending=False,
-            filter_func=lambda df: df[df['FLUSH_ATTR'] > 0]
+            ascending=True,
+            filter_func=lambda df: df[df['cache_writes'].notna()]
         )
+
+    if 'CACHE_READ_CALL_RATIO' in attributes_df.columns:
+        display_attribute_table(
+            attributes_df,
+            sort_by='CACHE_READ_CALL_RATIO',
+            title='PER-ATTRIBUTE METRICS: Top by cache reads over all attribute calls',
+            top_n=20,
+            ascending=True,
+            filter_func=lambda df: df[df['cache_reads'] > 0]
+        )
+
 
 
 DESC = """
