@@ -165,7 +165,7 @@ def compute_compute_event_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame)
     # Copy columns back to attributes_df (in-place modification)
     for col in ['mean_time', 'median_time', 'p95_time', 'p99_time',
                 'total_time', 'min_time', 'max_time']:
-        attributes_df[col] = temp_df[col]
+        attributes_df[col] = temp_df[col].fillna(0.0).astype(float)
 
     elapsed = time.perf_counter() - step_start
     logger.info(f"Performance metrics computed in {elapsed:.3f}s")
@@ -301,8 +301,7 @@ def compute_cache_metrics(df: pd.DataFrame, attributes_df: pd.DataFrame) -> None
 
     # Copy columns back to attributes_df (in-place modification)
     for col in merge_cols:
-        attributes_df[col] = temp_df[col].values
-
+        attributes_df[col] = temp_df[col].fillna(0).values
     logger.debug(f"Non-null cache_writes in attributes_df: {attributes_df['cache_writes'].notna().sum()}")
 
     elapsed = time.perf_counter() - step_start
@@ -664,8 +663,14 @@ def main():
         compute_event_counts=compute_event_counts
     )
 
+    attributes_df = metrics['attributes']
+
+    output_file = "compute_stats_result.csv"
+    logger.info(f"writing to file: {output_file}")
+    attributes_df.to_csv(output_file, sep="\t")
+
     # Present results
-    present_results(metrics, csv_path)
+    # present_results(metrics, csv_path)
 
     logger.info("Analysis complete")
     return 0
