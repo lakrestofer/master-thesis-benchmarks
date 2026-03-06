@@ -69,12 +69,14 @@
                     zstd
                     glib
                     zlib
+                    # pypy3
                   ])
                   ++ [
                     python-pkg
                   ];
 
                 env = {
+                  # PYTHON_JIT = 1;
                   # makeLibraryPath adds /lib to derivation outputs.
                   # For raw string paths like /run/opengl-driver/lib, concatenate directly.
                   LD_LIBRARY_PATH =
